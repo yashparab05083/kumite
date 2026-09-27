@@ -33,12 +33,20 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
+      justify-content: flex-start;
+      gap: 8px;
       color: white;
       text-shadow: 1px 1px 2px #000;
       position: relative;
-      padding: 0;
-      padding-bottom: 120px;
+      padding: 10px 0 120px;
+      box-sizing: border-box;
+    }
+
+    .side h2 {
+      font-size: clamp(5.5rem, 6vw, 8.5rem);
+      line-height: 1;
+      margin: 0;
+      font-weight: 700;
     }
 
     .red-side {
@@ -51,33 +59,39 @@
 
     .score {
       font-family: 'Roboto Mono', monospace;
-      font-size: 15rem;
+      font-size: 27rem;
       font-weight: bold;
       margin: 0;
+      line-height: 0.9;
+      padding-top: 18px;
+      padding-bottom: 8px;
+      margin-top: 0;
     }
 
     .sensu-badge {
       position: absolute;
-      top: 20px;
-      right: 20px;
-      font-size: 1.5rem;
+      top: 130px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: none;
+      font-size: 2.8rem;
       background-color: var(--yellow);
       color: black;
-      padding: 5px 15px;
+      padding: 8px 20px;
       border-radius: 10px;
       font-weight: bold;
-      transform: scale(1);
+      letter-spacing: 0.1em;
       transition: transform 0.2s ease;
-      display: none;
       width: fit-content;
+      z-index: 2;
+    }
+
+    .side.sensu-active {
+      padding-top: 38px;
     }
 
     .sensu-badge:hover {
       transform: scale(1.1);
-    }
-
-    .red-side .sensu-badge {
-      left: 20px;
     }
 
     .header-container {
@@ -134,7 +148,7 @@
       align-items: center;
       justify-content: center;
       gap: 10px;
-      margin-top: 20px;
+      margin-top: 0;
     }
 
     .score-buttons .btn {
@@ -192,16 +206,12 @@
     /* New Score History and Penalty Styles */
     .score-history {
       display: flex;
-      /* Changed to flex for horizontal alignment */
       flex-direction: row;
-      /* Horizontal */
       align-items: center;
       justify-content: center;
-      /* Center horizontally */
       gap: 5px;
-      margin-top: 20px;
+      margin-top: 0;
       min-height: 40px;
-      /* Give it some height even when empty */
     }
 
     .score-popup {
@@ -222,26 +232,30 @@
       flex-direction: column;
       align-items: center;
       gap: 10px;
-      margin-top: 20px;
+      margin-top: 0;
     }
 
     .penalty-blocks {
       display: flex;
-      gap: 5px;
-      margin-top: 10px;
+      gap: 6px;
+      margin-top: 0;
+      flex-wrap: nowrap;
     }
 
     .penalty-block {
-      width: 35px;
-      height: 35px;
+      width: 80px;
+      height: 80px;
       border-radius: 5px;
       color: white;
       display: none;
       justify-content: center;
       align-items: center;
       font-weight: bold;
-      font-size: 1.2rem;
+      font-size: 4.1rem;
       border: 2px solid;
+      letter-spacing: 0.02em;
+      padding: 0;
+      line-height: 1;
     }
 
     .chukoku {
@@ -269,7 +283,7 @@
       justify-content: center;
       flex-wrap: wrap;
       gap: 10px;
-      margin-top: 20px;
+      margin-top: 8px;
     }
 
     .lead-options {
@@ -490,13 +504,14 @@
   <div class="d-flex flex-grow-1">
     <div class="side red-side">
       <h2 class="display-4">AKA</h2>
+      <div class="sensu-badge" id="redSensu">Senshu</div>
       <div class="score" id="redScore">0</div>
-      <div class="sensu-badge" id="redSensu">Sensu</div>
       <div class="score-history" id="redScoreHistory"></div>
       <div class="penalty-container">
         <div class="penalty-blocks">
-          <div id="redC" class="penalty-block chukoku">C</div>
-          <div id="redK" class="penalty-block keikoku">K</div>
+          <div id="redC1" class="penalty-block chukoku">C1</div>
+          <div id="redC2" class="penalty-block chukoku">C2</div>
+          <div id="redC3" class="penalty-block chukoku">C3</div>
           <div id="redHC" class="penalty-block hansoku-chui">HC</div>
           <div id="redH" class="penalty-block hansoku">H</div>
         </div>
@@ -518,13 +533,14 @@
 
     <div class="side blue-side">
       <h2 class="display-4">AAO</h2>
+      <div class="sensu-badge" id="blueSensu">Senshu</div>
       <div class="score" id="blueScore">0</div>
-      <div class="sensu-badge" id="blueSensu">Sensu</div>
       <div class="score-history" id="blueScoreHistory"></div>
       <div class="penalty-container">
         <div class="penalty-blocks">
-          <div id="blueC" class="penalty-block chukoku">C</div>
-          <div id="blueK" class="penalty-block keikoku">K</div>
+          <div id="blueC1" class="penalty-block chukoku">C1</div>
+          <div id="blueC2" class="penalty-block chukoku">C2</div>
+          <div id="blueC3" class="penalty-block chukoku">C3</div>
           <div id="blueHC" class="penalty-block hansoku-chui">HC</div>
           <div id="blueH" class="penalty-block hansoku">H</div>
         </div>
@@ -605,10 +621,10 @@
   <script>
     let redScore = 0, blueScore = 0;
     let timer, timeLeft = 0;
-    const penaltyLevels = ["None", "Chukoku", "Keikoku", "Hansoku-Chui", "Hansoku"];
+    const penaltyLevels = ["None", "C1", "C2", "C3", "HC", "H"];
     let penalties = { red: { cat1: 0 }, blue: { cat1: 0 } };
     let sensu = null;
-    const penaltyBlocks = ['C', 'K', 'HC', 'H'];
+    const penaltyBlocks = ['C1', 'C2', 'C3', 'HC', 'H'];
     let redScoreHistory = [];
     let blueScoreHistory = [];
 
@@ -675,16 +691,18 @@
     function addPenalty(player) {
       if (penalties[player].cat1 < penaltyBlocks.length) {
         penalties[player].cat1++;
-        document.getElementById(player + penaltyBlocks[penalties[player].cat1 - 1]).style.display = "flex";
+        const blockId = player + penaltyBlocks[penalties[player].cat1 - 1];
+        document.getElementById(blockId).style.display = "flex";
       }
-      if (penalties[player].cat1 === 4) {
+      if (penalties[player].cat1 >= 5) {
         declareWinner(player === "red" ? "Blue (Red disqualified)" : "Red (Blue disqualified)");
       }
     }
 
     function removePenalty(player) {
       if (penalties[player].cat1 > 0) {
-        document.getElementById(player + penaltyBlocks[penalties[player].cat1 - 1]).style.display = "none";
+        const blockId = player + penaltyBlocks[penalties[player].cat1 - 1];
+        document.getElementById(blockId).style.display = "none";
         penalties[player].cat1--;
       }
     }
@@ -693,9 +711,11 @@
     function awardSensu(player) {
       if (sensu === null) {
         sensu = player;
+        document.querySelectorAll('.side').forEach(side => side.classList.add('sensu-active'));
+
         document.getElementById("redSensu").style.display = "none";
         document.getElementById("blueSensu").style.display = "none";
-        document.getElementById(sensu + "Sensu").style.display = "inline-block";
+        document.getElementById(player + "Sensu").style.display = "inline-block";
       } else {
         alert("Sensu has already been awarded!");
       }
@@ -809,16 +829,19 @@
       updateScoreHistory('red', redScoreHistory);
       updateScoreHistory('blue', blueScoreHistory);
 
-      document.getElementById("redC").style.display = "none";
-      document.getElementById("redK").style.display = "none";
+      document.getElementById("redC1").style.display = "none";
+      document.getElementById("redC2").style.display = "none";
+      document.getElementById("redC3").style.display = "none";
       document.getElementById("redHC").style.display = "none";
       document.getElementById("redH").style.display = "none";
-      document.getElementById("blueC").style.display = "none";
-      document.getElementById("blueK").style.display = "none";
+      document.getElementById("blueC1").style.display = "none";
+      document.getElementById("blueC2").style.display = "none";
+      document.getElementById("blueC3").style.display = "none";
       document.getElementById("blueHC").style.display = "none";
       document.getElementById("blueH").style.display = "none";
 
       sensu = null;
+      document.querySelectorAll('.side').forEach(side => side.classList.remove('sensu-active'));
       document.getElementById("redSensu").style.display = "none";
       document.getElementById("blueSensu").style.display = "none";
 
