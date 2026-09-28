@@ -1,6 +1,6 @@
 /**
  * 16-Slot Interactive Bout Sheet Editor & Official Diagram Renderer
- * Supports Drag/Drop, Slot Swapping, Participant Re-assignment, Late Entry Editing, and Undo Match
+ * Supports Drag/Drop, Slot Swapping, Participant Re-assignment, Late Entry Editing, Undo Match, and PDF Export
  */
 
 const BoutEditor = {
@@ -90,23 +90,24 @@ const BoutEditor = {
     };
 
     const html = `
-      <!-- Organizer Edit Toolbar -->
-      ${isOrganizer ? `
-        <div class="d-flex justify-content-between align-items-center bg-dark text-white p-2 rounded mb-3">
+      <!-- Top Action Toolbar (PDF Export & Print) -->
+      <div class="d-flex justify-content-between align-items-center mb-3 bg-light p-2 rounded border print-hide">
+        <div class="d-flex gap-2">
+          <button class="btn btn-danger btn-sm fw-bold" onclick="BoutEditor.downloadBoutPDF('${boutId}')">📄 Download PDF</button>
+          <button class="btn btn-secondary btn-sm fw-bold" onclick="BoutEditor.printBoutSheet()">🖨️ Print Sheet</button>
+        </div>
+        ${isOrganizer ? `
           <div class="d-flex align-items-center gap-2">
-            <span class="fw-bold">Organizer Controls:</span>
-            <button class="btn btn-sm ${this.isEditMode ? 'btn-warning text-dark fw-bold' : 'btn-outline-light'}" onclick="BoutEditor.toggleEditMode()">
+            <button class="btn btn-sm ${this.isEditMode ? 'btn-warning text-dark fw-bold' : 'btn-outline-dark'}" onclick="BoutEditor.toggleEditMode()">
               ${this.isEditMode ? '✏️ Exit Edit Mode' : '✏️ Enable Edit & Reassign Mode'}
             </button>
-          </div>
-          ${this.isEditMode ? `
-            <div class="d-flex gap-2">
+            ${this.isEditMode ? `
               <button class="btn btn-sm btn-success" onclick="BoutEditor.openAddParticipantModal('${boutId}')">➕ Add Late Entry</button>
               <button class="btn btn-sm btn-info text-white" onclick="BoutEditor.openQuickSwapModal('${boutId}')">🔀 Quick Swap Slots</button>
-            </div>
-          ` : ''}
-        </div>
-      ` : ''}
+            ` : ''}
+          </div>
+        ` : ''}
+      </div>
 
       <div class="bout-sheet-printable shadow-lg p-4 bg-white text-dark rounded">
         <!-- Sheet Header -->
@@ -202,6 +203,30 @@ const BoutEditor = {
     `;
 
     container.innerHTML = html;
+  },
+
+  downloadBoutPDF(boutId) {
+    const bracket = SyncService.state.brackets[boutId];
+    if (!bracket) return;
+
+    const element = document.querySelector('.bout-sheet-printable');
+    if (!element) return alert('No active bout sheet found!');
+
+    const filename = `${bracket.boutCode.toUpperCase()}_${bracket.boutName.replace(/[^a-zA-Z0-9]/g, '_')}_Sheet.pdf`;
+
+    const opt = {
+      margin:       [0.2, 0.2, 0.2, 0.2],
+      filename:     filename,
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { scale: 2, useCORS: true, logging: false },
+      jsPDF:        { unit: 'in', format: 'a4', orientation: 'landscape' }
+    };
+
+    html2pdf().set(opt).from(element).save();
+  },
+
+  printBoutSheet() {
+    window.print();
   },
 
   onMatchClick(boutId, matchNumber) {
