@@ -1,6 +1,6 @@
 /**
  * 16-Slot Interactive Bout Sheet Editor & Official Diagram Renderer
- * Supports Drag/Drop, Slot Swapping, Participant Re-assignment, Late Entry Editing, and Undo Match
+ * Supports Full Participant Name Display, PDF Export/Printing, Drag/Drop, Slot Swapping, and Late Entry Editing
  */
 
 const BoutEditor = {
@@ -24,14 +24,14 @@ const BoutEditor = {
     const m = bracket.matches;
     const isOrganizer = AuthService.currentUser && AuthService.currentUser.role === 'organizer';
 
-    // Helper for rendering a fighter box in Round 1..4 (Dojo name hidden on bout sheet)
+    // Helper for rendering a fighter box in Round 1..4 (FULL NAME VISIBLE, NO TRUNCATION)
     const renderFighterBox = (slotParticipant, label, isWinner, slotIndex) => {
       if (!slotParticipant) {
         return `
           <div class="fighter-box bye d-flex justify-content-between align-items-center">
             <span>${label}: BYE</span>
             ${(isOrganizer && this.isEditMode && slotIndex !== undefined) ? `
-              <button class="btn btn-xs btn-outline-primary py-0 px-1 ms-1 fs-7" onclick="event.stopPropagation(); BoutEditor.openSlotModal('${boutId}', ${slotIndex})">✏️ Edit</button>
+              <button class="btn btn-xs btn-outline-primary py-0 px-1 ms-1 fs-7 no-print" onclick="event.stopPropagation(); BoutEditor.openSlotModal('${boutId}', ${slotIndex})">✏️ Edit</button>
             ` : ''}
           </div>
         `;
@@ -40,12 +40,12 @@ const BoutEditor = {
       const winnerClass = isWinner ? 'winner-highlight' : '';
       return `
         <div class="fighter-box ${label.toLowerCase()} ${winnerClass} d-flex justify-content-between align-items-center">
-          <div class="text-truncate">
+          <div>
             <span class="badge bg-secondary me-1">${label}</span>
             <span class="fw-bold">${slotParticipant.name}</span>
           </div>
           ${(isOrganizer && this.isEditMode && slotIndex !== undefined) ? `
-            <button class="btn btn-xs btn-light py-0 px-1 ms-1 border fs-7" onclick="event.stopPropagation(); BoutEditor.openSlotModal('${boutId}', ${slotIndex})">⚙️</button>
+            <button class="btn btn-xs btn-light py-0 px-1 ms-1 border fs-7 no-print" onclick="event.stopPropagation(); BoutEditor.openSlotModal('${boutId}', ${slotIndex})">⚙️</button>
           ` : ''}
         </div>
       `;
@@ -76,12 +76,12 @@ const BoutEditor = {
             ${renderFighterBox(match.aka, 'AKA', akaWon, akaSlotIdx)}
           </div>
           ${canAdvanceBye ? `
-            <button class="btn btn-xs btn-outline-success w-100 py-0 text-nowrap mt-1 fs-7" onclick="event.stopPropagation(); BoutEditor.advanceBye('${boutId}', ${match.matchNumber})">
+            <button class="btn btn-xs btn-outline-success w-100 py-0 text-nowrap mt-1 fs-7 no-print" onclick="event.stopPropagation(); BoutEditor.advanceBye('${boutId}', ${match.matchNumber})">
               ⚡ Advance BYE
             </button>
           ` : ''}
           ${isCompleted ? `
-            <button class="btn btn-xs btn-outline-danger w-100 py-0 text-nowrap mt-1 fs-7" onclick="event.stopPropagation(); BoutEditor.undoMatch('${boutId}', ${match.matchNumber})">
+            <button class="btn btn-xs btn-outline-danger w-100 py-0 text-nowrap mt-1 fs-7 no-print" onclick="event.stopPropagation(); BoutEditor.undoMatch('${boutId}', ${match.matchNumber})">
               ↩️ Undo Match
             </button>
           ` : ''}
@@ -90,23 +90,25 @@ const BoutEditor = {
     };
 
     const html = `
-      <!-- Organizer Edit Toolbar -->
-      ${isOrganizer ? `
-        <div class="d-flex justify-content-between align-items-center bg-dark text-white p-2 rounded mb-3">
-          <div class="d-flex align-items-center gap-2">
-            <span class="fw-bold">Organizer Controls:</span>
+      <!-- Toolbar with PDF Export Button -->
+      <div class="d-flex justify-content-between align-items-center bg-dark text-white p-2 rounded mb-3 no-print">
+        <div class="d-flex align-items-center gap-2">
+          ${isOrganizer ? `
             <button class="btn btn-sm ${this.isEditMode ? 'btn-warning text-dark fw-bold' : 'btn-outline-light'}" onclick="BoutEditor.toggleEditMode()">
               ${this.isEditMode ? '✏️ Exit Edit Mode' : '✏️ Enable Edit & Reassign Mode'}
             </button>
-          </div>
-          ${this.isEditMode ? `
-            <div class="d-flex gap-2">
-              <button class="btn btn-sm btn-success" onclick="BoutEditor.openAddParticipantModal('${boutId}')">➕ Add Late Entry</button>
-              <button class="btn btn-sm btn-info text-white" onclick="BoutEditor.openQuickSwapModal('${boutId}')">🔀 Quick Swap Slots</button>
-            </div>
           ` : ''}
+          <button class="btn btn-sm btn-primary fw-bold" onclick="BoutEditor.printCurrentBoutSheet()">
+            🖨️ Download / Print Bout Sheet (PDF)
+          </button>
         </div>
-      ` : ''}
+        ${(isOrganizer && this.isEditMode) ? `
+          <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-success" onclick="BoutEditor.openAddParticipantModal('${boutId}')">➕ Add Late Entry</button>
+            <button class="btn btn-sm btn-info text-white" onclick="BoutEditor.openQuickSwapModal('${boutId}')">🔀 Quick Swap Slots</button>
+          </div>
+        ` : ''}
+      </div>
 
       <div class="bout-sheet-printable shadow-lg p-4 bg-white text-dark rounded">
         <!-- Sheet Header -->
@@ -202,6 +204,34 @@ const BoutEditor = {
     `;
 
     container.innerHTML = html;
+  },
+
+  printCurrentBoutSheet() {
+    window.print();
+  },
+
+  printAllBoutSheets() {
+    const bouts = SyncService.state.bouts;
+    if (!bouts || bouts.length === 0) return alert('No bout sheets available to print!');
+
+    const container = document.createElement('div');
+    container.id = 'allBoutsPrintContainer';
+
+    bouts.forEach(b => {
+      const boutDiv = document.createElement('div');
+      boutDiv.id = `print_bout_${b.id}`;
+      boutDiv.className = 'mb-5';
+      container.appendChild(boutDiv);
+    });
+
+    document.body.appendChild(container);
+
+    bouts.forEach(b => {
+      this.renderBoutSheet(b.id, `print_bout_${b.id}`);
+    });
+
+    window.print();
+    container.remove();
   },
 
   onMatchClick(boutId, matchNumber) {

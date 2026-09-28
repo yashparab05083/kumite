@@ -250,11 +250,12 @@
             <a class="nav-link" id="tabTatami" href="#">Tatami Ring Controls</a>
           </li>
         </ul>
-        <div class="d-flex align-items-center gap-3">
+        <div class="d-flex align-items-center gap-2">
           <span id="cloudSyncStatusBadge" class="badge bg-success fs-6">⚡ Realtime Sync: Connected</span>
           <span id="userBadge" class="badge bg-primary fs-6">👤 Guest</span>
-          <button class="btn btn-outline-warning btn-sm nav-organizer-only" id="btnExportResults">📊 Export Results Excel</button>
-          <button class="btn btn-danger btn-sm fw-bold" onclick="AuthService.logout()">🚪 Logout</button>
+          <button class="btn btn-outline-info btn-sm nav-organizer-only fw-bold" onclick="BoutEditor.printAllBoutSheets()">🖨️ Print All Bouts PDF</button>
+          <button class="btn btn-outline-warning btn-sm nav-organizer-only fw-bold" id="btnExportResults">📊 Export Results Excel</button>
+          <button class="btn btn-danger btn-sm fw-bold ms-1" onclick="AuthService.logout()">🚪 Logout</button>
         </div>
       </div>
     </div>
@@ -281,8 +282,9 @@
 
         <div class="col-md-6">
           <div class="card shadow-sm h-100 border-dark">
-            <div class="card-header bg-dark text-white">
+            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
               <h5 class="m-0 fw-bold">🏆 Championship Information</h5>
+              <button class="btn btn-sm btn-info text-white fw-bold" onclick="BoutEditor.printAllBoutSheets()">🖨️ Export All Bout Sheets PDF</button>
             </div>
             <div class="card-body">
               <h4 class="fw-bold text-dark">Shotokan Karate Championship 2026</h4>
@@ -306,7 +308,10 @@
       <div class="row g-4">
         <div class="col-md-3">
           <div class="card shadow-sm">
-            <div class="card-header bg-dark text-white fw-bold">Bout Sheets Queue</div>
+            <div class="card-header bg-dark text-white fw-bold d-flex justify-content-between align-items-center">
+              <span>Bout Sheets Queue</span>
+              <button class="btn btn-xs btn-outline-light" onclick="BoutEditor.printAllBoutSheets()" title="Print All PDF">🖨️ All</button>
+            </div>
             <div class="card-body p-2" id="boutSheetsListContainer"></div>
           </div>
         </div>
@@ -403,7 +408,6 @@
       </div>
     </div>
 
-    <!-- Floating Timer Card -->
     <div class="timer-card">
       <div class="display-time" id="time">03:00</div>
       <div class="mt-2">
@@ -511,7 +515,6 @@
     let redScoreHistory = [];
     let blueScoreHistory = [];
 
-    // Lead Victory 10-Second Grace Period Tracker
     let leadVictoryTimeout = null;
     let leadVictoryInterval = null;
     let leadVictoryCountdown = 10;
