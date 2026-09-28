@@ -23,7 +23,7 @@ body {
   border: 1px solid #dee2e6;
   border-radius: 6px;
   padding: 6px;
-  width: 215px; /* Widened to fit full names without truncation */
+  width: 210px; /* Expanded for full name visibility */
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
   cursor: pointer;
   transition: all 0.2s ease-in-out;
@@ -47,16 +47,15 @@ body {
   margin-bottom: 4px;
 }
 
-/* Fighter Box: Displays full participant name on 1-2 lines without truncating */
+/* Full Fighter Name Display (No Truncation / No Ellipsis) */
 .fighter-box {
   padding: 4px 6px;
   margin: 3px 0;
   border-radius: 4px;
   font-size: 0.85rem;
-  line-height: 1.25;
   white-space: normal;
   word-break: break-word;
-  overflow: visible;
+  line-height: 1.2;
 }
 
 .fighter-box.aao {
@@ -88,54 +87,29 @@ body {
 }
 
 .bracket-pool {
-  min-width: 670px;
+  min-width: 680px;
 }
 
-/* Printable Bout Sheet Styling & PDF Export */
+/* Printable Bout Sheet Styling */
 .bout-sheet-printable {
   background: #ffffff;
   border: 1px solid #ccc;
+  width: 100%;
 }
 
 @media print {
-  @page {
-    size: A4 landscape;
-    margin: 8mm;
-  }
-
-  body {
-    background-color: #ffffff !important;
-  }
-
   body * {
     visibility: hidden;
   }
-
   .bout-sheet-printable, .bout-sheet-printable * {
     visibility: visible;
   }
-
   .bout-sheet-printable {
     position: absolute;
     left: 0;
     top: 0;
     width: 100%;
-    margin: 0;
-    padding: 0 !important;
-    border: none !important;
+    border: none;
     box-shadow: none !important;
-    page-break-after: always;
-  }
-
-  .match-card {
-    width: 195px !important;
-  }
-
-  .fighter-box {
-    font-size: 0.8rem !important;
-  }
-
-  .btn, .navbar, .header-container button, .no-print {
-    display: none !important;
   }
 }

@@ -1,6 +1,6 @@
 /**
  * 16-Slot Interactive Bout Sheet Editor & Official Diagram Renderer
- * Supports Full Participant Name Display, PDF Export/Printing, Drag/Drop, Slot Swapping, and Late Entry Editing
+ * Supports Full Name Display, Drag/Drop, Slot Swapping, PDF Export, and Late Entry Editing
  */
 
 const BoutEditor = {
@@ -31,7 +31,7 @@ const BoutEditor = {
           <div class="fighter-box bye d-flex justify-content-between align-items-center">
             <span>${label}: BYE</span>
             ${(isOrganizer && this.isEditMode && slotIndex !== undefined) ? `
-              <button class="btn btn-xs btn-outline-primary py-0 px-1 ms-1 fs-7 no-print" onclick="event.stopPropagation(); BoutEditor.openSlotModal('${boutId}', ${slotIndex})">✏️ Edit</button>
+              <button class="btn btn-xs btn-outline-primary py-0 px-1 ms-1 fs-7" onclick="event.stopPropagation(); BoutEditor.openSlotModal('${boutId}', ${slotIndex})">✏️ Edit</button>
             ` : ''}
           </div>
         `;
@@ -45,7 +45,7 @@ const BoutEditor = {
             <span class="fw-bold">${slotParticipant.name}</span>
           </div>
           ${(isOrganizer && this.isEditMode && slotIndex !== undefined) ? `
-            <button class="btn btn-xs btn-light py-0 px-1 ms-1 border fs-7 no-print" onclick="event.stopPropagation(); BoutEditor.openSlotModal('${boutId}', ${slotIndex})">⚙️</button>
+            <button class="btn btn-xs btn-light py-0 px-1 ms-1 border fs-7" onclick="event.stopPropagation(); BoutEditor.openSlotModal('${boutId}', ${slotIndex})">⚙️</button>
           ` : ''}
         </div>
       `;
@@ -76,12 +76,12 @@ const BoutEditor = {
             ${renderFighterBox(match.aka, 'AKA', akaWon, akaSlotIdx)}
           </div>
           ${canAdvanceBye ? `
-            <button class="btn btn-xs btn-outline-success w-100 py-0 text-nowrap mt-1 fs-7 no-print" onclick="event.stopPropagation(); BoutEditor.advanceBye('${boutId}', ${match.matchNumber})">
+            <button class="btn btn-xs btn-outline-success w-100 py-0 text-nowrap mt-1 fs-7" onclick="event.stopPropagation(); BoutEditor.advanceBye('${boutId}', ${match.matchNumber})">
               ⚡ Advance BYE
             </button>
           ` : ''}
           ${isCompleted ? `
-            <button class="btn btn-xs btn-outline-danger w-100 py-0 text-nowrap mt-1 fs-7 no-print" onclick="event.stopPropagation(); BoutEditor.undoMatch('${boutId}', ${match.matchNumber})">
+            <button class="btn btn-xs btn-outline-danger w-100 py-0 text-nowrap mt-1 fs-7" onclick="event.stopPropagation(); BoutEditor.undoMatch('${boutId}', ${match.matchNumber})">
               ↩️ Undo Match
             </button>
           ` : ''}
@@ -90,27 +90,25 @@ const BoutEditor = {
     };
 
     const html = `
-      <!-- Toolbar with PDF Export Button -->
-      <div class="d-flex justify-content-between align-items-center bg-dark text-white p-2 rounded mb-3 no-print">
+      <!-- Toolbar with Download PDF Button -->
+      <div class="d-flex justify-content-between align-items-center bg-dark text-white p-2 rounded mb-3">
         <div class="d-flex align-items-center gap-2">
           ${isOrganizer ? `
             <button class="btn btn-sm ${this.isEditMode ? 'btn-warning text-dark fw-bold' : 'btn-outline-light'}" onclick="BoutEditor.toggleEditMode()">
-              ${this.isEditMode ? '✏️ Exit Edit Mode' : '✏️ Enable Edit & Reassign Mode'}
+              ${this.isEditMode ? '✏️ Exit Edit Mode' : '✏️ Enable Edit Mode'}
             </button>
           ` : ''}
-          <button class="btn btn-sm btn-primary fw-bold" onclick="BoutEditor.printCurrentBoutSheet()">
-            🖨️ Download / Print Bout Sheet (PDF)
-          </button>
         </div>
-        ${(isOrganizer && this.isEditMode) ? `
-          <div class="d-flex gap-2">
+        <div class="d-flex gap-2">
+          ${(isOrganizer && this.isEditMode) ? `
             <button class="btn btn-sm btn-success" onclick="BoutEditor.openAddParticipantModal('${boutId}')">➕ Add Late Entry</button>
             <button class="btn btn-sm btn-info text-white" onclick="BoutEditor.openQuickSwapModal('${boutId}')">🔀 Quick Swap Slots</button>
-          </div>
-        ` : ''}
+          ` : ''}
+          <button class="btn btn-sm btn-danger fw-bold" onclick="BoutEditor.downloadPDF('${boutId}')">📄 Download Bout Sheet PDF</button>
+        </div>
       </div>
 
-      <div class="bout-sheet-printable shadow-lg p-4 bg-white text-dark rounded">
+      <div id="boutSheetToExport_${boutId}" class="bout-sheet-printable shadow-lg p-4 bg-white text-dark rounded">
         <!-- Sheet Header -->
         <div class="text-center border-bottom pb-2 mb-3">
           <h2 class="fw-bold tracking-wide">SHOTOKAN KARATE CHAMPIONSHIP</h2>
@@ -150,7 +148,7 @@ const BoutEditor = {
           </div>
 
           <!-- CENTER CIRCLE (FINAL MATCH 15) -->
-          <div class="bracket-center-circle text-center mx-3 my-auto p-4 rounded-circle border border-3 border-danger shadow" style="width: 230px; height: 230px; display: flex; flex-direction: column; justify-content: center; background: #fff8f8;">
+          <div class="bracket-center-circle text-center mx-3 my-auto p-4 rounded-circle border border-3 border-danger shadow" style="width: 240px; height: 240px; display: flex; flex-direction: column; justify-content: center; background: #fff8f8;">
             <h5 class="fw-bold text-danger mb-1">FINAL</h5>
             <small class="text-muted">Center Ring</small>
             <div class="mt-2">
@@ -206,32 +204,26 @@ const BoutEditor = {
     container.innerHTML = html;
   },
 
-  printCurrentBoutSheet() {
-    window.print();
-  },
+  downloadPDF(boutId) {
+    const bracket = SyncService.state.brackets[boutId];
+    const element = document.getElementById(`boutSheetToExport_${boutId}`);
 
-  printAllBoutSheets() {
-    const bouts = SyncService.state.bouts;
-    if (!bouts || bouts.length === 0) return alert('No bout sheets available to print!');
+    if (!element) return alert('Bout sheet element not found!');
 
-    const container = document.createElement('div');
-    container.id = 'allBoutsPrintContainer';
+    const filename = `${bracket ? bracket.boutCode : 'Bout_Sheet'}_Shotokan_Championship.pdf`;
 
-    bouts.forEach(b => {
-      const boutDiv = document.createElement('div');
-      boutDiv.id = `print_bout_${b.id}`;
-      boutDiv.className = 'mb-5';
-      container.appendChild(boutDiv);
-    });
-
-    document.body.appendChild(container);
-
-    bouts.forEach(b => {
-      this.renderBoutSheet(b.id, `print_bout_${b.id}`);
-    });
-
-    window.print();
-    container.remove();
+    if (window.html2pdf) {
+      const opt = {
+        margin: [5, 5, 5, 5],
+        filename: filename,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
+      };
+      html2pdf().set(opt).from(element).save();
+    } else {
+      window.print();
+    }
   },
 
   onMatchClick(boutId, matchNumber) {
