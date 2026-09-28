@@ -227,6 +227,7 @@ const BoutEditor = {
     if (!bracket) return;
 
     BracketEngine.advanceByeMatch(bracket, matchNumber);
+    SyncService.checkBoutCompletion(boutId);
     SyncService.saveToLocal();
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
     
@@ -243,6 +244,7 @@ const BoutEditor = {
     if (!bracket) return;
 
     BracketEngine.undoMatch(bracket, matchNumber);
+    SyncService.checkBoutCompletion(boutId);
     SyncService.saveToLocal();
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
 
