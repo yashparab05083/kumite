@@ -45,15 +45,27 @@ const ScoreboardController = {
     document.getElementById('boutEditorView').style.display = 'none';
   },
 
-  // Close scoreboard and return to previous view
+  // Close scoreboard and return smoothly to active view
   closeScoreboard() {
     document.getElementById('scoreboardSection').style.display = 'none';
     document.getElementById('mainNavTabs').style.display = 'flex';
     
-    if (SyncService.state.currentUser.role === 'organizer') {
-      document.getElementById('organizerView').style.display = 'block';
-    } else {
+    const user = AuthService.currentUser;
+
+    if (user && user.role === 'tatami') {
       document.getElementById('tatamiView').style.display = 'block';
+      document.getElementById('organizerView').style.display = 'none';
+      document.getElementById('boutEditorView').style.display = 'none';
+      TatamiManager.renderOperatorView(user.tatamiId, 'tatamiOperatorContainer');
+    } else {
+      // Default to Organizer / Bout Editor view
+      document.getElementById('organizerView').style.display = 'block';
+      document.getElementById('tatamiView').style.display = 'none';
+      TatamiManager.renderOrganizerDashboard('tatamiDashboardContainer');
+
+      if (this.currentMatchContext && this.currentMatchContext.boutId) {
+        BoutEditor.renderBoutSheet(this.currentMatchContext.boutId, 'activeBoutDiagramContainer');
+      }
     }
   },
 
@@ -89,7 +101,7 @@ const ScoreboardController = {
 
     SyncService.commitMatchResult(boutId, matchNumber, winnerSide, matchScore);
 
-    // Auto-close scoreboard after 3 seconds or on click
+    // Smooth transition back to view after winner banner display
     setTimeout(() => {
       this.closeScoreboard();
     }, 2500);
