@@ -14,6 +14,7 @@ const BoutEditor = {
     if (!bracket || !container) return;
 
     const m = bracket.matches;
+    const isOrganizer = AuthService.currentUser && AuthService.currentUser.role === 'organizer';
 
     // Helper for rendering a fighter box
     const renderFighterBox = (slotParticipant, label, isWinner) => {
@@ -33,7 +34,6 @@ const BoutEditor = {
       const aaoWon = isCompleted && match.winner && match.aao && match.winner.id === match.aao.id;
       const akaWon = isCompleted && match.winner && match.aka && match.winner.id === match.aka.id;
 
-      // Check if it's a BYE match ready to advance
       const isByeMatch = !isCompleted && ((match.aao && !match.aka) || (!match.aao && match.aka) || (!match.aao && !match.aka));
 
       return `
@@ -56,6 +56,20 @@ const BoutEditor = {
     };
 
     const html = `
+      <div class="d-flex justify-content-between align-items-center mb-3 no-print">
+        <h4 class="m-0 fw-bold text-dark">Bout Sheet: ${bracket.boutName}</h4>
+        <div class="d-flex gap-2">
+          ${isOrganizer ? `
+            <button class="btn btn-warning fw-bold shadow-sm" onclick="BoutEditor.openEditModal('${boutId}')">
+              ✏️ Edit Bout Sheet & Seedings
+            </button>
+          ` : ''}
+          <button class="btn btn-secondary fw-bold shadow-sm" onclick="window.print()">
+            🖨️ Print / Save PDF
+          </button>
+        </div>
+      </div>
+
       <div class="bout-sheet-printable shadow-lg p-4 bg-white text-dark rounded">
         <!-- Sheet Header -->
         <div class="text-center border-bottom pb-2 mb-3">
@@ -72,7 +86,6 @@ const BoutEditor = {
         <div class="bracket-diagram-container d-flex justify-content-between align-items-center">
           <!-- LEFT POOL (Pool A) -->
           <div class="bracket-pool left-pool d-flex flex-row align-items-center gap-3" style="flex: 1;">
-            <!-- R1 (Matches 1..4) -->
             <div class="round-column d-flex flex-column gap-3">
               <h6 class="text-center text-secondary mb-1">Round 1</h6>
               ${renderMatchCard(m[0])}
@@ -81,14 +94,12 @@ const BoutEditor = {
               ${renderMatchCard(m[3])}
             </div>
 
-            <!-- Quarter Finals (Matches 9, 10) -->
             <div class="round-column d-flex flex-column gap-5 justify-content-around">
               <h6 class="text-center text-secondary mb-1">Quarter Final</h6>
               ${renderMatchCard(m[8])}
               ${renderMatchCard(m[9])}
             </div>
 
-            <!-- Left Semi-Final (Match 13) -->
             <div class="round-column d-flex flex-column justify-content-center">
               <h6 class="text-center text-secondary mb-1">Semi-Final</h6>
               ${renderMatchCard(m[12])}
@@ -106,7 +117,6 @@ const BoutEditor = {
 
           <!-- RIGHT POOL (Pool B) -->
           <div class="bracket-pool right-pool d-flex flex-row-reverse align-items-center gap-3" style="flex: 1;">
-            <!-- R1 (Matches 5..8) -->
             <div class="round-column d-flex flex-column gap-3">
               <h6 class="text-center text-secondary mb-1">Round 1</h6>
               ${renderMatchCard(m[4])}
@@ -115,14 +125,12 @@ const BoutEditor = {
               ${renderMatchCard(m[7])}
             </div>
 
-            <!-- Quarter Finals (Matches 11, 12) -->
             <div class="round-column d-flex flex-column gap-5 justify-content-around">
               <h6 class="text-center text-secondary mb-1">Quarter Final</h6>
               ${renderMatchCard(m[10])}
               ${renderMatchCard(m[11])}
             </div>
 
-            <!-- Right Semi-Final (Match 14) -->
             <div class="round-column d-flex flex-column justify-content-center">
               <h6 class="text-center text-secondary mb-1">Semi-Final</h6>
               ${renderMatchCard(m[13])}
@@ -174,11 +182,175 @@ const BoutEditor = {
     SyncService.saveToLocal();
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
     
-    // Also re-render Tatami ring container if active
     const ringContainer = document.getElementById('ringBoutContainer');
     if (ringContainer) {
       this.renderBoutSheet(boutId, 'ringBoutContainer');
     }
+  },
+
+  // Open Interactive Edit Modal for Organizer
+  openEditModal(boutId) {
+    const bracket = SyncService.state.brackets[boutId];
+    if (!bracket) return;
+
+    const slots = bracket.slots;
+    const slotOptions = slots.map((s, idx) => {
+      const label = s ? `Slot ${idx + 1}: ${s.name} (${s.branch || 'Dojo'})` : `Slot ${idx + 1}: [EMPTY / BYE]`;
+      return `<option value="${idx}">${label}</option>`;
+    }).join('');
+
+    const modalHtml = `
+      <div class="modal fade" id="editBoutModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+          <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+              <h5 class="modal-title fw-bold">✏️ Edit Bout Sheet: ${bracket.boutName}</h5>
+              <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+              <ul class="nav nav-tabs mb-3" id="editModalTabs">
+                <li class="nav-item">
+                  <button class="nav-link active fw-bold" id="tabSwap" onclick="BoutEditor.switchModalSubTab('swap')">🔄 Swap Positions</button>
+                </li>
+                <li class="nav-item">
+                  <button class="nav-link fw-bold" id="tabEditFighter" onclick="BoutEditor.switchModalSubTab('editFighter')">👤 Edit Fighter / Late Entry</button>
+                </li>
+              </ul>
+
+              <!-- SUBTAB 1: SWAP POSITIONS -->
+              <div id="subTabSwap" class="subtab-pane">
+                <p class="text-muted small">Select two slots to swap their positions in the Round 1 bracket:</p>
+                <div class="row g-3 mb-3">
+                  <div class="col-md-6">
+                    <label class="form-label fw-bold">First Participant / Slot:</label>
+                    <select id="swapSlotA" class="form-select">${slotOptions}</select>
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label fw-bold">Second Participant / Slot:</label>
+                    <select id="swapSlotB" class="form-select">${slotOptions}</select>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-warning w-100 fw-bold" onclick="BoutEditor.confirmSwap('${boutId}')">🔄 Swap Positions</button>
+              </div>
+
+              <!-- SUBTAB 2: EDIT FIGHTER / LATE ENTRY -->
+              <div id="subTabEditFighter" class="subtab-pane" style="display: none;">
+                <div class="mb-3">
+                  <label class="form-label fw-bold">Select Target Slot:</label>
+                  <select id="editSlotSelect" class="form-select" onchange="BoutEditor.loadSlotDataIntoForm('${boutId}', this.value)">
+                    ${slotOptions}
+                  </select>
+                </div>
+                <div class="row g-2">
+                  <div class="col-md-6">
+                    <label class="form-label fw-bold">Participant Name:</label>
+                    <input type="text" id="editFighterName" class="form-control" placeholder="Enter Name">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label fw-bold">Branch / Dojo:</label>
+                    <input type="text" id="editFighterBranch" class="form-control" placeholder="Enter Branch/Dojo">
+                  </div>
+                </div>
+                <button type="button" class="btn btn-success w-100 fw-bold mt-3" onclick="BoutEditor.saveFighterDetails('${boutId}')">💾 Save Participant Details</button>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('modalContainer').innerHTML = modalHtml;
+    const modal = new bootstrap.Modal(document.getElementById('editBoutModal'));
+    modal.show();
+
+    this.loadSlotDataIntoForm(boutId, 0);
+  },
+
+  switchModalSubTab(tabName) {
+    document.querySelectorAll('.subtab-pane').forEach(el => el.style.display = 'none');
+    document.querySelectorAll('#editModalTabs .nav-link').forEach(el => el.classList.remove('active'));
+
+    if (tabName === 'swap') {
+      document.getElementById('subTabSwap').style.display = 'block';
+      document.getElementById('tabSwap').classList.add('active');
+    } else {
+      document.getElementById('subTabEditFighter').style.display = 'block';
+      document.getElementById('tabEditFighter').classList.add('active');
+    }
+  },
+
+  loadSlotDataIntoForm(boutId, slotIndex) {
+    const bracket = SyncService.state.brackets[boutId];
+    if (!bracket) return;
+    const slot = bracket.slots[slotIndex];
+
+    document.getElementById('editFighterName').value = slot ? slot.name : '';
+    document.getElementById('editFighterBranch').value = slot ? slot.branch : '';
+  },
+
+  confirmSwap(boutId) {
+    const slotA = parseInt(document.getElementById('swapSlotA').value, 10);
+    const slotB = parseInt(document.getElementById('swapSlotB').value, 10);
+
+    if (slotA === slotB) return alert('Select two different slots to swap!');
+
+    SyncService.swapBracketSlots(boutId, slotA, slotB);
+
+    const modalEl = document.getElementById('editBoutModal');
+    const modal = bootstrap.Modal.getInstance(modalEl);
+    if (modal) modal.hide();
+
+    this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
+  },
+
+  saveFighterDetails(boutId) {
+    const slotIndex = parseInt(document.getElementById('editSlotSelect').value, 10);
+    const name = document.getElementById('editFighterName').value.trim();
+    const branch = document.getElementById('editFighterBranch').value.trim();
+
+    if (!name) return alert('Please enter a participant name!');
+
+    const bracket = SyncService.state.brackets[boutId];
+    if (!bracket) return;
+
+    if (!bracket.slots[slotIndex]) {
+      // Insert new late entry participant
+      bracket.slots[slotIndex] = {
+        id: 'p_' + Math.random().toString(36).substr(2, 9),
+        name,
+        branch,
+        gender: bracket.gender,
+        age: 10,
+        belt: 9,
+        beltLabel: 'Kyu 9 (White)',
+        beltTier: bracket.beltTier,
+        schoolHours: false
+      };
+    } else {
+      bracket.slots[slotIndex].name = name;
+      bracket.slots[slotIndex].branch = branch;
+    }
+
+    // Rebuild Round 1 matches
+    for (let i = 0; i < 8; i++) {
+      const aao = bracket.slots[i * 2];
+      const aka = bracket.slots[i * 2 + 1];
+      const match = bracket.matches[i];
+      if (match.status !== 'Completed') {
+        match.aao = aao;
+        match.aka = aka;
+        match.status = (aao || aka) ? 'Scheduled' : 'Empty';
+      }
+    }
+
+    SyncService.saveToLocal();
+
+    const modalEl = document.getElementById('editBoutModal');
+    const modal = bootstrap.Modal.getInstance(modalEl);
+    if (modal) modal.hide();
+
+    this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
   }
 };
 

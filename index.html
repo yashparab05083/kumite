@@ -239,9 +239,10 @@
             <a class="nav-link" id="tabTatami" href="#">Tatami Ring Controls</a>
           </li>
         </ul>
-        <div class="d-flex align-items-center gap-3">
+        <div class="d-flex align-items-center gap-2">
           <span id="userBadge" class="badge bg-primary fs-6">👤 Guest</span>
-          <button class="btn btn-outline-warning btn-sm nav-organizer-only" id="btnExportResults">📊 Export Results Excel</button>
+          <button class="btn btn-outline-light btn-sm nav-organizer-only" onclick="openPasswordSettingsModal()">⚙️ User Passwords</button>
+          <button class="btn btn-outline-warning btn-sm nav-organizer-only" id="btnExportResults">📊 Export Excel</button>
           <button class="btn btn-danger btn-sm fw-bold" onclick="AuthService.logout()">🚪 Logout</button>
         </div>
       </div>
@@ -257,13 +258,21 @@
         <!-- Excel Upload Card -->
         <div class="col-md-6">
           <div class="card shadow-sm h-100 border-primary">
-            <div class="card-header bg-primary text-white">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
               <h5 class="m-0 fw-bold">📥 Upload Participant Excel File</h5>
             </div>
             <div class="card-body">
-              <p class="text-muted">Select your participant Excel sheet containing Name, Gender, Age, Belt (Kyu 9 to Kudan -9), Branch/Dojo, Instructor Name, and School Hours (Y/N).</p>
+              <p class="text-muted mb-2">Select your participant Excel sheet containing Name, Gender, Age, Belt (Kyu 9 to Kudan -9), Branch/Dojo, Instructor Name, and School Hours (Y/N).</p>
               <input type="file" id="excelFileInput" class="form-control mb-3" accept=".xlsx, .xls">
-              <div id="importStatus" class="fw-bold text-success"></div>
+              <div id="importStatus" class="fw-bold text-success mb-3"></div>
+
+              <hr>
+              <h6 class="fw-bold text-dark">💾 Multi-Day Tournament Backup & Restore</h6>
+              <div class="d-flex gap-2 mt-2">
+                <button class="btn btn-sm btn-outline-success fw-bold" onclick="SyncService.exportBackupJSON()">💾 Download Backup (.json)</button>
+                <button class="btn btn-sm btn-outline-secondary fw-bold" onclick="document.getElementById('backupFileInput').click()">📂 Load Backup (.json)</button>
+                <input type="file" id="backupFileInput" style="display:none;" accept=".json" onchange="handleBackupRestore(this)">
+              </div>
             </div>
           </div>
         </div>
@@ -452,7 +461,6 @@
             <div class="mb-3">
               <label class="form-label fw-bold">Password:</label>
               <input type="password" id="loginPassword" class="form-control" placeholder="Enter password" required>
-              <small class="text-muted">Default Organizer: <code>admin123</code> | Tatamis: <code>tatami1pass</code> ... <code>tatami8pass</code></small>
             </div>
             <button type="submit" class="btn btn-primary w-100 fw-bold py-2">Sign In</button>
           </form>
@@ -478,6 +486,68 @@
   <script src="js/bout-editor.js"></script>
   <script src="js/export-engine.js"></script>
   <script src="js/app.js"></script>
+
+  <!-- Helper Scripts for Backup Restore & User Password Modal -->
+  <script>
+    async function handleBackupRestore(input) {
+      const file = input.files[0];
+      if (!file) return;
+      try {
+        await SyncService.importBackupJSON(file);
+        alert('Tournament Backup Data loaded successfully!');
+        window.location.reload();
+      } catch (err) {
+        alert('Failed to load backup file: ' + err);
+      }
+    }
+
+    function openPasswordSettingsModal() {
+      const users = AuthService.users;
+      let userRows = '';
+      Object.keys(users).forEach(uKey => {
+        const u = users[uKey];
+        userRows += `
+          <div class="row g-2 align-items-center mb-2">
+            <div class="col-md-5 fw-bold">${u.name} (<code>${uKey}</code>):</div>
+            <div class="col-md-5">
+              <input type="password" id="pwd_${uKey}" class="form-control form-control-sm" value="${u.password}">
+            </div>
+            <div class="col-md-2">
+              <button class="btn btn-sm btn-primary w-100" onclick="updateUserPassword('${uKey}')">Save</button>
+            </div>
+          </div>
+        `;
+      });
+
+      const modalHtml = `
+        <div class="modal fade" id="passwordSettingsModal" tabindex="-1">
+          <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+              <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title fw-bold">⚙️ Custom User Passwords & Accounts</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+              </div>
+              <div class="modal-body">
+                <p class="text-muted small">Set custom passwords for the Main Organizer and Tatami 1..8 operators to keep your tournament secure.</p>
+                ${userRows}
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('modalContainer').innerHTML = modalHtml;
+      const modal = new bootstrap.Modal(document.getElementById('passwordSettingsModal'));
+      modal.show();
+    }
+
+    function updateUserPassword(uKey) {
+      const newPwd = document.getElementById(`pwd_${uKey}`).value;
+      if (!newPwd) return alert('Password cannot be empty!');
+      AuthService.updatePassword(uKey, newPwd);
+      alert(`Password for ${uKey} updated successfully!`);
+    }
+  </script>
 
   <!-- Original Scoreboard Script Logic -->
   <script>

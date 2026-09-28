@@ -1,11 +1,12 @@
 /**
  * Authentication & Role Authorization Service
- * Manages Organizer & 8 Tatami Ring Operator Accounts
+ * Supports Custom Passwords & Persistent Multi-Day Account Storage
  */
 
 const AuthService = {
-  // Pre-configured Credentials
-  USERS: {
+  STORAGE_KEY: 'kumite_custom_accounts_v1',
+
+  DEFAULT_USERS: {
     'organizer': { password: 'admin123', role: 'organizer', name: 'Main Organizer / Tournament Director' },
     'tatami1': { password: 'tatami1pass', role: 'tatami', tatamiId: 1, name: 'Tatami 1 Operator' },
     'tatami2': { password: 'tatami2pass', role: 'tatami', tatamiId: 2, name: 'Tatami 2 Operator' },
@@ -17,22 +18,45 @@ const AuthService = {
     'tatami8': { password: 'tatami8pass', role: 'tatami', tatamiId: 8, name: 'Tatami 8 Operator' }
   },
 
+  users: {},
   currentUser: null,
 
   init() {
-    const saved = sessionStorage.getItem('kumite_auth_user');
-    if (saved) {
+    // Load custom user accounts from persistent localStorage
+    try {
+      const saved = localStorage.getItem(this.STORAGE_KEY);
+      if (saved) {
+        this.users = JSON.parse(saved);
+      } else {
+        this.users = JSON.parse(JSON.stringify(this.DEFAULT_USERS));
+        this.saveAccounts();
+      }
+    } catch (e) {
+      this.users = JSON.parse(JSON.stringify(this.DEFAULT_USERS));
+    }
+
+    // Load active session
+    const activeSession = localStorage.getItem('kumite_auth_session');
+    if (activeSession) {
       try {
-        this.currentUser = JSON.parse(saved);
+        this.currentUser = JSON.parse(activeSession);
       } catch (e) {
         this.currentUser = null;
       }
     }
   },
 
+  saveAccounts() {
+    try {
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.users));
+    } catch (e) {
+      console.error('Failed to save user accounts:', e);
+    }
+  },
+
   login(username, password) {
     const u = String(username).toLowerCase().trim();
-    const user = this.USERS[u];
+    const user = this.users[u];
 
     if (user && user.password === String(password).trim()) {
       this.currentUser = {
@@ -41,21 +65,32 @@ const AuthService = {
         tatamiId: user.tatamiId || null,
         name: user.name
       };
-      sessionStorage.setItem('kumite_auth_user', JSON.stringify(this.currentUser));
+      localStorage.setItem('kumite_auth_session', JSON.stringify(this.currentUser));
       return { success: true, user: this.currentUser };
     }
 
-    return { success: false, message: 'Invalid Username or Password!' };
+    return { success: false, message: 'Invalid Password!' };
   },
 
   logout() {
     this.currentUser = null;
-    sessionStorage.removeItem('kumite_auth_user');
+    localStorage.removeItem('kumite_auth_session');
     window.location.reload();
   },
 
   isLoggedIn() {
     return this.currentUser !== null;
+  },
+
+  // Organizer: Update password for any account (Organizer or Tatami 1..8)
+  updatePassword(username, newPassword) {
+    const u = String(username).toLowerCase().trim();
+    if (this.users[u]) {
+      this.users[u].password = String(newPassword).trim();
+      this.saveAccounts();
+      return true;
+    }
+    return false;
   }
 };
 

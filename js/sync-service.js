@@ -1,6 +1,6 @@
 /**
  * Sync Service & Application State Store
- * Handles local storage persistence & real-time sync across devices
+ * Handles local storage persistence, backup/restore JSON, & real-time sync across devices
  */
 
 const SyncService = {
@@ -26,7 +26,7 @@ const SyncService = {
       status: 'Empty' // Empty, Active, Paused
     })),
     currentUser: {
-      role: 'organizer', // organizer, tatami
+      role: 'organizer',
       tatamiId: null
     }
   },
@@ -68,6 +68,39 @@ const SyncService = {
     } catch (e) {
       console.error('Failed to save local state:', e);
     }
+  },
+
+  // Export 100% complete Tournament Data Backup JSON for multi-day safety
+  exportBackupJSON() {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(this.state, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `Tournament_Backup_${new Date().toISOString().split('T')[0]}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  },
+
+  // Import / Restore Tournament Data Backup JSON
+  importBackupJSON(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const importedState = JSON.parse(e.target.result);
+          if (importedState && importedState.bouts && importedState.brackets) {
+            this.state = { ...this.state, ...importedState };
+            this.saveToLocal();
+            resolve(true);
+          } else {
+            reject('Invalid tournament backup JSON format!');
+          }
+        } catch (err) {
+          reject(err);
+        }
+      };
+      reader.readAsText(file);
+    });
   },
 
   // Save imported participants & generated bouts
@@ -132,7 +165,6 @@ const SyncService = {
     // Free up Tatami if current active match completed
     this.state.tatamis.forEach(tatami => {
       if (tatami.activeBoutId === boutId && tatami.activeMatchNumber === matchNumber) {
-        // Find next scheduled match in this bout or queue
         const nextMatch = bracket.matches.find(m => m.status === 'Scheduled');
         if (nextMatch) {
           tatami.activeMatchNumber = nextMatch.matchNumber;
@@ -166,9 +198,7 @@ const SyncService = {
         match.aka = aka;
         match.winner = null;
         match.loser = null;
-        match.status = (aao && aka) ? 'Scheduled' : (aao || aka ? 'Completed' : 'Completed');
-        if (aao && !aka) match.winner = { ...aao };
-        if (!aao && aka) match.winner = { ...aka };
+        match.status = (aao || aka) ? 'Scheduled' : 'Empty';
       }
     }
 
