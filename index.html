@@ -186,7 +186,7 @@
     }
 
     .chukoku { background-color: #ff9800; border-color: #fff; }
-    .hansoku-chui { background-color: #ff5722; border-color: #fff; }
+    .hansoku-chui { background-color: #f44336; border-color: #fff; }
     .hansoku { background-color: #616161; border-color: #fff; }
 
     .winner-overlay {
@@ -250,7 +250,7 @@
             <a class="nav-link" id="tabTatami" href="#">Tatami Ring Controls</a>
           </li>
         </ul>
-        <div class="d-flex align-items-center gap-2">
+        <div class="d-flex align-items-center gap-3">
           <span id="cloudSyncStatusBadge" class="badge bg-success fs-6">⚡ Realtime Sync: Connected</span>
           <span id="userBadge" class="badge bg-primary fs-6">👤 Guest</span>
           <button class="btn btn-outline-warning btn-sm nav-organizer-only" id="btnExportResults">📊 Export Results Excel</button>
@@ -274,7 +274,7 @@
             <div class="card-body">
               <p class="text-muted">Select your participant Excel sheet containing Name, Gender, Age, Belt (Kyu 9 to Kudan -9), Branch/Dojo, Instructor Name, and School Hours (Y/N).</p>
               <input type="file" id="excelFileInput" class="form-control mb-3" accept=".xlsx, .xls">
-              <div id="importStatus" class="fw-bold text-success mb-2"></div>
+              <div id="importStatus" class="fw-bold text-success"></div>
             </div>
           </div>
         </div>
@@ -287,10 +287,10 @@
             <div class="card-body">
               <h4 class="fw-bold text-dark">Shotokan Karate Championship 2026</h4>
               <p class="text-muted mb-2">Automated 16-slot infinity seeding bout sheets & 8 Tatami live score integration.</p>
-              <div class="d-flex gap-2">
+              <div class="d-flex gap-3">
                 <span class="badge bg-primary fs-6">8 Tatami Rings</span>
                 <span class="badge bg-success fs-6">WKF Kumite Rules</span>
-                <span class="badge bg-warning text-dark fs-6">PDF Bout Export</span>
+                <span class="badge bg-warning text-dark fs-6">Consolidated Excel Export</span>
               </div>
             </div>
           </div>
@@ -487,7 +487,6 @@
   <!-- External JS Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
@@ -512,6 +511,7 @@
     let redScoreHistory = [];
     let blueScoreHistory = [];
 
+    // Lead Victory 10-Second Grace Period Tracker
     let leadVictoryTimeout = null;
     let leadVictoryInterval = null;
     let leadVictoryCountdown = 10;

@@ -23,7 +23,7 @@ body {
   border: 1px solid #dee2e6;
   border-radius: 6px;
   padding: 6px;
-  width: 210px; /* Expanded for full name visibility */
+  width: 175px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
   cursor: pointer;
   transition: all 0.2s ease-in-out;
@@ -47,15 +47,14 @@ body {
   margin-bottom: 4px;
 }
 
-/* Full Fighter Name Display (No Truncation / No Ellipsis) */
 .fighter-box {
-  padding: 4px 6px;
-  margin: 3px 0;
+  padding: 3px 6px;
+  margin: 2px 0;
   border-radius: 4px;
-  font-size: 0.85rem;
-  white-space: normal;
-  word-break: break-word;
-  line-height: 1.2;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .fighter-box.aao {
@@ -87,14 +86,13 @@ body {
 }
 
 .bracket-pool {
-  min-width: 680px;
+  min-width: 580px;
 }
 
 /* Printable Bout Sheet Styling */
 .bout-sheet-printable {
   background: #ffffff;
   border: 1px solid #ccc;
-  width: 100%;
 }
 
 @media print {

@@ -1,6 +1,6 @@
 /**
  * 16-Slot Interactive Bout Sheet Editor & Official Diagram Renderer
- * Supports Full Name Display, Drag/Drop, Slot Swapping, PDF Export, and Late Entry Editing
+ * Supports Drag/Drop, Slot Swapping, Participant Re-assignment, Late Entry Editing, and Undo Match
  */
 
 const BoutEditor = {
@@ -24,7 +24,7 @@ const BoutEditor = {
     const m = bracket.matches;
     const isOrganizer = AuthService.currentUser && AuthService.currentUser.role === 'organizer';
 
-    // Helper for rendering a fighter box in Round 1..4 (FULL NAME VISIBLE, NO TRUNCATION)
+    // Helper for rendering a fighter box in Round 1..4 (Dojo name hidden on bout sheet)
     const renderFighterBox = (slotParticipant, label, isWinner, slotIndex) => {
       if (!slotParticipant) {
         return `
@@ -40,7 +40,7 @@ const BoutEditor = {
       const winnerClass = isWinner ? 'winner-highlight' : '';
       return `
         <div class="fighter-box ${label.toLowerCase()} ${winnerClass} d-flex justify-content-between align-items-center">
-          <div>
+          <div class="text-truncate">
             <span class="badge bg-secondary me-1">${label}</span>
             <span class="fw-bold">${slotParticipant.name}</span>
           </div>
@@ -90,25 +90,25 @@ const BoutEditor = {
     };
 
     const html = `
-      <!-- Toolbar with Download PDF Button -->
-      <div class="d-flex justify-content-between align-items-center bg-dark text-white p-2 rounded mb-3">
-        <div class="d-flex align-items-center gap-2">
-          ${isOrganizer ? `
+      <!-- Organizer Edit Toolbar -->
+      ${isOrganizer ? `
+        <div class="d-flex justify-content-between align-items-center bg-dark text-white p-2 rounded mb-3">
+          <div class="d-flex align-items-center gap-2">
+            <span class="fw-bold">Organizer Controls:</span>
             <button class="btn btn-sm ${this.isEditMode ? 'btn-warning text-dark fw-bold' : 'btn-outline-light'}" onclick="BoutEditor.toggleEditMode()">
-              ${this.isEditMode ? '✏️ Exit Edit Mode' : '✏️ Enable Edit Mode'}
+              ${this.isEditMode ? '✏️ Exit Edit Mode' : '✏️ Enable Edit & Reassign Mode'}
             </button>
+          </div>
+          ${this.isEditMode ? `
+            <div class="d-flex gap-2">
+              <button class="btn btn-sm btn-success" onclick="BoutEditor.openAddParticipantModal('${boutId}')">➕ Add Late Entry</button>
+              <button class="btn btn-sm btn-info text-white" onclick="BoutEditor.openQuickSwapModal('${boutId}')">🔀 Quick Swap Slots</button>
+            </div>
           ` : ''}
         </div>
-        <div class="d-flex gap-2">
-          ${(isOrganizer && this.isEditMode) ? `
-            <button class="btn btn-sm btn-success" onclick="BoutEditor.openAddParticipantModal('${boutId}')">➕ Add Late Entry</button>
-            <button class="btn btn-sm btn-info text-white" onclick="BoutEditor.openQuickSwapModal('${boutId}')">🔀 Quick Swap Slots</button>
-          ` : ''}
-          <button class="btn btn-sm btn-danger fw-bold" onclick="BoutEditor.downloadPDF('${boutId}')">📄 Download Bout Sheet PDF</button>
-        </div>
-      </div>
+      ` : ''}
 
-      <div id="boutSheetToExport_${boutId}" class="bout-sheet-printable shadow-lg p-4 bg-white text-dark rounded">
+      <div class="bout-sheet-printable shadow-lg p-4 bg-white text-dark rounded">
         <!-- Sheet Header -->
         <div class="text-center border-bottom pb-2 mb-3">
           <h2 class="fw-bold tracking-wide">SHOTOKAN KARATE CHAMPIONSHIP</h2>
@@ -148,7 +148,7 @@ const BoutEditor = {
           </div>
 
           <!-- CENTER CIRCLE (FINAL MATCH 15) -->
-          <div class="bracket-center-circle text-center mx-3 my-auto p-4 rounded-circle border border-3 border-danger shadow" style="width: 240px; height: 240px; display: flex; flex-direction: column; justify-content: center; background: #fff8f8;">
+          <div class="bracket-center-circle text-center mx-3 my-auto p-4 rounded-circle border border-3 border-danger shadow" style="width: 230px; height: 230px; display: flex; flex-direction: column; justify-content: center; background: #fff8f8;">
             <h5 class="fw-bold text-danger mb-1">FINAL</h5>
             <small class="text-muted">Center Ring</small>
             <div class="mt-2">
@@ -202,28 +202,6 @@ const BoutEditor = {
     `;
 
     container.innerHTML = html;
-  },
-
-  downloadPDF(boutId) {
-    const bracket = SyncService.state.brackets[boutId];
-    const element = document.getElementById(`boutSheetToExport_${boutId}`);
-
-    if (!element) return alert('Bout sheet element not found!');
-
-    const filename = `${bracket ? bracket.boutCode : 'Bout_Sheet'}_Shotokan_Championship.pdf`;
-
-    if (window.html2pdf) {
-      const opt = {
-        margin: [5, 5, 5, 5],
-        filename: filename,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
-      };
-      html2pdf().set(opt).from(element).save();
-    } else {
-      window.print();
-    }
   },
 
   onMatchClick(boutId, matchNumber) {
