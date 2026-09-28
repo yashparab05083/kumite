@@ -73,11 +73,27 @@ document.addEventListener('DOMContentLoaded', () => {
       const file = e.target.files[0];
       if (!file) return;
 
+      const statusEl = document.getElementById('importStatus');
+
       try {
-        document.getElementById('importStatus').innerText = 'Reading Excel file...';
+        if (statusEl) {
+          statusEl.className = 'fw-bold text-primary mb-3';
+          statusEl.innerText = '⏳ Reading Excel file...';
+        }
+
         const participants = await ExcelImporter.parseExcelFile(file);
         
-        document.getElementById('importStatus').innerText = `Parsed ${participants.length} participants. Generating bout sheets...`;
+        if (!participants || participants.length === 0) {
+          if (statusEl) {
+            statusEl.className = 'fw-bold text-danger mb-3';
+            statusEl.innerText = '❌ No valid participants found in Excel file! Ensure column headers match Name, Gender, Age, Belt, Branch.';
+          }
+          return;
+        }
+
+        if (statusEl) {
+          statusEl.innerText = `⏳ Parsed ${participants.length} participants. Generating bout sheets...`;
+        }
         
         const bouts = ExcelImporter.generateBoutGroups(participants);
         const brackets = {};
@@ -88,13 +104,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
         SyncService.setBoutsAndBrackets(bouts, brackets);
         
-        document.getElementById('importStatus').innerText = `Successfully created ${bouts.length} Bout Sheets!`;
+        if (statusEl) {
+          statusEl.className = 'fw-bold text-success mb-3';
+          statusEl.innerText = `✅ Successfully created ${bouts.length} Bout Sheets for ${participants.length} participants!`;
+        }
+
         renderBoutList('boutSheetsListContainer');
         TatamiManager.renderOrganizerDashboard('tatamiDashboardContainer');
 
       } catch (err) {
         console.error('Error importing Excel:', err);
-        document.getElementById('importStatus').innerText = 'Failed to import Excel file. Check format.';
+        if (statusEl) {
+          statusEl.className = 'fw-bold text-danger mb-3';
+          statusEl.innerText = '❌ Error importing Excel file: ' + (err.message || err);
+        }
       }
     });
   }
@@ -121,7 +144,8 @@ function applyUserPermissions() {
   if (!user) return;
 
   // Update Badge
-  document.getElementById('userBadge').innerText = `👤 ${user.name}`;
+  const userBadge = document.getElementById('userBadge');
+  if (userBadge) userBadge.innerText = `👤 ${user.name}`;
 
   if (user.role === 'organizer') {
     document.querySelectorAll('.nav-organizer-only').forEach(el => el.style.display = 'block');
