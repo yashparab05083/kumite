@@ -1,11 +1,12 @@
 /**
  * Sync Service & Application State Store
- * Handles local storage persistence & real-time sync across devices
+ * Handles local storage persistence & live real-time sync across devices via Firebase
  */
 
 const SyncService = {
   STORAGE_KEY: 'kumite_tournament_data_v1',
   listeners: [],
+  isRemoteSyncing: false,
 
   state: {
     tournamentInfo: {
@@ -29,6 +30,30 @@ const SyncService = {
 
   init() {
     this.loadFromLocal();
+
+    // Initialize Firebase Live Sync
+    FirebaseConfig.init();
+    if (FirebaseConfig.isInitialized && FirebaseConfig.db) {
+      FirebaseConfig.db.ref('tournament_live_data').on('value', (snapshot) => {
+        const val = snapshot.val();
+        if (val) {
+          this.isRemoteSyncing = true;
+          this.state.bouts = val.bouts || [];
+          this.state.brackets = val.brackets || {};
+          this.state.tatamis = val.tatamis || this.state.tatamis;
+
+          // Re-evaluate completion status
+          if (this.state.bouts) {
+            this.state.bouts.forEach(b => this.checkBoutCompletion(b.id));
+          }
+
+          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
+          this.notifyListeners();
+          this.isRemoteSyncing = false;
+        }
+      });
+    }
+
     window.addEventListener('storage', (e) => {
       if (e.key === this.STORAGE_KEY) {
         this.loadFromLocal();
@@ -52,7 +77,6 @@ const SyncService = {
         const parsed = JSON.parse(raw);
         this.state = { ...this.state, ...parsed };
 
-        // Re-evaluate bout completion statuses on load
         if (this.state.bouts) {
           this.state.bouts.forEach(b => this.checkBoutCompletion(b.id));
         }
@@ -66,8 +90,18 @@ const SyncService = {
     try {
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
       this.notifyListeners();
+
+      // Push to Firebase Realtime Database if active
+      if (!this.isRemoteSyncing && FirebaseConfig.isInitialized && FirebaseConfig.db) {
+        FirebaseConfig.db.ref('tournament_live_data').set({
+          bouts: this.state.bouts,
+          brackets: this.state.brackets,
+          tatamis: this.state.tatamis,
+          updatedAt: Date.now()
+        });
+      }
     } catch (e) {
-      console.error('Failed to save local state:', e);
+      console.error('Failed to save state:', e);
     }
   },
 
@@ -112,7 +146,6 @@ const SyncService = {
     this.saveToLocal();
   },
 
-  // Check and update if an entire bout sheet is completed
   checkBoutCompletion(boutId) {
     const bout = this.state.bouts.find(b => b.id === boutId);
     const bracket = this.state.brackets[boutId];
