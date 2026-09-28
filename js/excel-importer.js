@@ -1,6 +1,5 @@
 /**
  * Excel Importer & Bout Grouping Engine for Shotokan Karate Championship
- * Robust Excel parsing with automatic header row detection & belt mapping
  */
 
 const ExcelImporter = {
@@ -9,7 +8,7 @@ const ExcelImporter = {
     if (beltValue === undefined || beltValue === null) return 9; // Default White
     const str = String(beltValue).trim().toLowerCase();
     
-    // Direct numeric check
+    // Numeric check
     const num = parseInt(str, 10);
     if (!isNaN(num) && num !== 0 && num >= -9 && num <= 9) {
       return num;
@@ -25,7 +24,7 @@ const ExcelImporter = {
     if (str.includes('brown 3') || str.includes('3rd brown') || str.includes('kyu 3')) return 3;
     if (str.includes('brown 2') || str.includes('2nd brown') || str.includes('kyu 2')) return 2;
     if (str.includes('brown 1') || str.includes('1st brown') || str.includes('kyu 1')) return 1;
-    if (str.includes('brown')) return 2;
+    if (str.includes('brown')) return 2; // Generic brown fallback
     
     // Dan ranks (-1 to -9)
     if (str.includes('shodan') || str.includes('1st dan') || str.includes('black 1')) return -1;
@@ -37,7 +36,7 @@ const ExcelImporter = {
     if (str.includes('nanadan') || str.includes('7th dan') || str.includes('black 7')) return -7;
     if (str.includes('hachidan') || str.includes('8th dan') || str.includes('black 8')) return -8;
     if (str.includes('kudan') || str.includes('9th dan') || str.includes('black 9')) return -9;
-    if (str.includes('black')) return -1;
+    if (str.includes('black')) return -1; // Generic black fallback
 
     return 9; // Default fallback
   },
@@ -73,7 +72,7 @@ const ExcelImporter = {
     return 'Black Belt';
   },
 
-  // Read Excel File with Smart Header Row Detection
+  // Read Excel File from File Input
   parseExcelFile(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -81,71 +80,30 @@ const ExcelImporter = {
         try {
           const data = new Uint8Array(e.target.result);
           const workbook = XLSX.read(data, { type: 'array' });
-          if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
-            return reject(new Error('Excel file has no sheets!'));
-          }
-
           const firstSheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[firstSheetName];
+          const jsonRows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
 
-          // 1. Convert sheet to array of arrays to find header row index
-          const rawRows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
-          if (!rawRows || rawRows.length === 0) {
-            return reject(new Error('Excel sheet is empty!'));
-          }
-
-          let headerRowIndex = 0;
-          for (let r = 0; r < Math.min(10, rawRows.length); r++) {
-            const rowArr = rawRows[r];
-            if (Array.isArray(rowArr)) {
-              const hasHeaderMatch = rowArr.some(cell => {
-                const s = String(cell || '').toLowerCase();
-                return s.includes('name') || s.includes('participant') || s.includes('athlete') || s.includes('belt') || s.includes('dojo') || s.includes('branch');
-              });
-              if (hasHeaderMatch) {
-                headerRowIndex = r;
-                break;
-              }
-            }
-          }
-
-          // 2. Parse starting from detected header row
-          const jsonRows = XLSX.utils.sheet_to_json(worksheet, { range: headerRowIndex, defval: '' });
-          const validParticipants = [];
-
-          jsonRows.forEach((row, index) => {
-            if (!row || typeof row !== 'object') return;
+          const participants = jsonRows.map((row, index) => {
             const keys = Object.keys(row);
-            if (keys.length === 0) return;
-
             const findVal = (terms) => {
-              const matchedKey = keys.find(k => {
-                if (k === null || k === undefined) return false;
-                const strK = String(k).toLowerCase();
-                return terms.some(t => strK.includes(t.toLowerCase()));
-              });
-              return matchedKey !== undefined ? row[matchedKey] : '';
+              const matchedKey = keys.find(k => terms.some(t => k.toLowerCase().includes(t.toLowerCase())));
+              return matchedKey ? row[matchedKey] : '';
             };
 
-            const rawName = String(findVal(['name', 'participant', 'athlete', 'student', 'player']) || '').trim();
-
-            // Skip empty rows or header duplicates
-            if (!rawName && keys.every(k => !row[k])) return;
-            if (rawName.toLowerCase() === 'name' || rawName.toLowerCase() === 'participant name') return;
-
-            const name = rawName || `Participant ${index + 1}`;
-            const genderRaw = String(findVal(['gender', 'sex', 'm/f']) || 'Male').trim();
-            const gender = genderRaw.toLowerCase().startsWith('f') ? 'Female' : 'Male';
+            const name = findVal(['name', 'participant', 'athlete', 'student']) || `Participant ${index + 1}`;
+            const genderRaw = findVal(['gender', 'sex', 'm/f']) || 'Male';
+            const gender = String(genderRaw).trim().toLowerCase().startsWith('f') ? 'Female' : 'Male';
             const ageRaw = parseInt(findVal(['age', 'years']), 10);
             const age = isNaN(ageRaw) ? 10 : ageRaw;
-            const beltRaw = findVal(['belt', 'kyu', 'dan', 'grade', 'rank']);
+            const beltRaw = findVal(['belt', 'kyu', 'dan', 'grade']);
             const belt = this.parseBelt(beltRaw);
             const branch = String(findVal(['branch', 'dojo', 'club', 'school']) || 'Main Branch').trim();
             const instructor = String(findVal(['instructor', 'sensei', 'coach']) || '').trim();
             const schoolHoursRaw = String(findVal(['school hours', 'school hour', 'school', 'sh'])).trim().toLowerCase();
             const schoolHours = schoolHoursRaw.startsWith('y') || schoolHoursRaw === 'true' || schoolHoursRaw === '1';
 
-            validParticipants.push({
+            return {
               id: 'p_' + Math.random().toString(36).substr(2, 9),
               name,
               gender,
@@ -156,10 +114,10 @@ const ExcelImporter = {
               branch,
               instructor,
               schoolHours
-            });
+            };
           });
 
-          resolve(validParticipants);
+          resolve(participants);
         } catch (err) {
           reject(err);
         }
@@ -169,7 +127,7 @@ const ExcelImporter = {
     });
   },
 
-  // Derive Age Category Name (e.g. U8, U10, U12, U14, U16, Senior)
+  // Derive Age Category Name (e.g. U10, U12, U14, U16, Senior)
   getAgeCategory(age) {
     if (age <= 8) return 'U8';
     if (age <= 10) return 'U10';
