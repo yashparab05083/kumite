@@ -1,6 +1,6 @@
 /**
  * 16-Slot Interactive Bout Sheet Editor & Official Diagram Renderer
- * Supports Drag/Drop, Slot Swapping, Participant Re-assignment, and Late Entry Editing
+ * Supports Drag/Drop, Slot Swapping, Participant Re-assignment, Late Entry Editing, and Undo Match
  */
 
 const BoutEditor = {
@@ -56,7 +56,7 @@ const BoutEditor = {
       const aaoWon = isCompleted && match.winner && match.aao && match.winner.id === match.aao.id;
       const akaWon = isCompleted && match.winner && match.aka && match.winner.id === match.aka.id;
 
-      const isByeMatch = !isCompleted && ((match.aao && !match.aka) || (!match.aao && match.aka) || (!match.aao && !match.aka));
+      const canAdvanceBye = !isCompleted && BracketEngine.canAdvanceBye(bracket, match.matchNumber);
 
       let aaoSlotIdx = undefined;
       let akaSlotIdx = undefined;
@@ -75,9 +75,14 @@ const BoutEditor = {
             ${renderFighterBox(match.aao, 'AAO', aaoWon, aaoSlotIdx)}
             ${renderFighterBox(match.aka, 'AKA', akaWon, akaSlotIdx)}
           </div>
-          ${isByeMatch ? `
+          ${canAdvanceBye ? `
             <button class="btn btn-xs btn-outline-success w-100 py-0 text-nowrap mt-1 fs-7" onclick="event.stopPropagation(); BoutEditor.advanceBye('${boutId}', ${match.matchNumber})">
               ⚡ Advance BYE
+            </button>
+          ` : ''}
+          ${isCompleted ? `
+            <button class="btn btn-xs btn-outline-danger w-100 py-0 text-nowrap mt-1 fs-7" onclick="event.stopPropagation(); BoutEditor.undoMatch('${boutId}', ${match.matchNumber})">
+              ↩️ Undo Match
             </button>
           ` : ''}
         </div>
@@ -211,7 +216,9 @@ const BoutEditor = {
     if (match.aao && match.aka) {
       ScoreboardController.loadMatch(boutId, matchNumber);
     } else if (match.aao || match.aka) {
-      this.advanceBye(boutId, matchNumber);
+      if (BracketEngine.canAdvanceBye(bracket, matchNumber)) {
+        this.advanceBye(boutId, matchNumber);
+      }
     }
   },
 
@@ -223,6 +230,22 @@ const BoutEditor = {
     SyncService.saveToLocal();
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
     
+    const ringContainer = document.getElementById('ringBoutContainer');
+    if (ringContainer) {
+      this.renderBoutSheet(boutId, 'ringBoutContainer');
+    }
+  },
+
+  undoMatch(boutId, matchNumber) {
+    if (!confirm(`Are you sure you want to undo Match #${matchNumber} and reset downstream winners?`)) return;
+
+    const bracket = SyncService.state.brackets[boutId];
+    if (!bracket) return;
+
+    BracketEngine.undoMatch(bracket, matchNumber);
+    SyncService.saveToLocal();
+    this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
+
     const ringContainer = document.getElementById('ringBoutContainer');
     if (ringContainer) {
       this.renderBoutSheet(boutId, 'ringBoutContainer');
