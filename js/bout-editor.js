@@ -217,9 +217,12 @@ const BoutEditor = {
     const bracket = SyncService.state.brackets[boutId];
     if (!bracket) return alert('No active bout sheet found!');
 
+    const prevScrollY = window.scrollY;
+    window.scrollTo(0, 0);
+
     const tempContainer = document.createElement('div');
     tempContainer.id = 'tempSinglePdfContainer';
-    tempContainer.style.position = 'fixed';
+    tempContainer.style.position = 'absolute';
     tempContainer.style.left = '0';
     tempContainer.style.top = '0';
     tempContainer.style.width = '1250px';
@@ -237,7 +240,7 @@ const BoutEditor = {
       margin:       [0.15, 0.15, 0.15, 0.15],
       filename:     filename,
       image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 1250 },
+      html2canvas:  { scale: 2, useCORS: true, logging: false, scrollX: 0, scrollY: 0, x: 0, y: 0, windowWidth: 1250 },
       jsPDF:        { unit: 'in', format: 'a4', orientation: 'landscape', compress: true },
       pagebreak:    { mode: 'avoid-all' }
     };
@@ -246,11 +249,13 @@ const BoutEditor = {
       if (document.getElementById('tempSinglePdfContainer')) {
         document.body.removeChild(tempContainer);
       }
+      window.scrollTo(0, prevScrollY);
     }).catch(err => {
       console.error('Single PDF Export Error:', err);
       if (document.getElementById('tempSinglePdfContainer')) {
         document.body.removeChild(tempContainer);
       }
+      window.scrollTo(0, prevScrollY);
     });
   },
 
@@ -259,9 +264,12 @@ const BoutEditor = {
     const bouts = SyncService.state.bouts;
     if (!bouts || bouts.length === 0) return alert('No bout sheets generated yet!');
 
+    const prevScrollY = window.scrollY;
+    window.scrollTo(0, 0);
+
     const tempContainer = document.createElement('div');
     tempContainer.id = 'tempPdfBatchContainer';
-    tempContainer.style.position = 'fixed';
+    tempContainer.style.position = 'absolute';
     tempContainer.style.left = '0';
     tempContainer.style.top = '0';
     tempContainer.style.width = '1250px';
@@ -289,7 +297,7 @@ const BoutEditor = {
       margin:       [0.15, 0.15, 0.15, 0.15],
       filename:     `Shotokan_Championship_All_Bout_Sheets.pdf`,
       image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 1250 },
+      html2canvas:  { scale: 2, useCORS: true, logging: false, scrollX: 0, scrollY: 0, x: 0, y: 0, windowWidth: 1250 },
       jsPDF:        { unit: 'in', format: 'a4', orientation: 'landscape', compress: true },
       pagebreak:    { mode: ['css', 'legacy'] }
     };
@@ -298,11 +306,13 @@ const BoutEditor = {
       if (document.getElementById('tempPdfBatchContainer')) {
         document.body.removeChild(tempContainer);
       }
+      window.scrollTo(0, prevScrollY);
     }).catch(err => {
       console.error('Batch PDF Export Error:', err);
       if (document.getElementById('tempPdfBatchContainer')) {
         document.body.removeChild(tempContainer);
       }
+      window.scrollTo(0, prevScrollY);
     });
   },
 
