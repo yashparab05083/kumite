@@ -142,7 +142,13 @@ const BracketEngine = {
     return [...poolA, ...poolB];
   },
 
-  // Check if a BYE match is allowed to advance (MUST NOT be waiting for a feeder match)
+  // Helper: check if a feeder match is finished/resolved (Completed OR Empty)
+  isFeederDone(match) {
+    if (!match) return true;
+    return match.status === 'Completed' || match.status === 'Empty';
+  },
+
+  // Check if a BYE match is allowed to advance
   canAdvanceBye(bracket, matchNumber) {
     const m = bracket.matches;
     const match = m[matchNumber - 1];
@@ -170,8 +176,8 @@ const BracketEngine = {
     const aaoFeeder = m[feeders.aao];
     const akaFeeder = m[feeders.aka];
 
-    // Both upstream feeder matches MUST be completed first!
-    if (aaoFeeder.status !== 'Completed' || akaFeeder.status !== 'Completed') {
+    // Preceding feeder matches MUST be done (Completed OR Empty)
+    if (!this.isFeederDone(aaoFeeder) || !this.isFeederDone(akaFeeder)) {
       return false;
     }
 
@@ -256,7 +262,12 @@ const BracketEngine = {
 
     for (let i = 8; i <= 11; i++) {
       if (m[i].status !== 'Completed') {
-        m[i].status = (m[i].aao || m[i].aka) ? 'Scheduled' : 'Pending';
+        const hasFeederReady = (this.isFeederDone(m[(i - 8) * 2]) && this.isFeederDone(m[(i - 8) * 2 + 1]));
+        if (hasFeederReady && (m[i].aao || m[i].aka)) {
+          m[i].status = 'Scheduled';
+        } else if (!m[i].aao && !m[i].aka) {
+          m[i].status = hasFeederReady ? 'Empty' : 'Pending';
+        }
       }
     }
 
@@ -268,7 +279,14 @@ const BracketEngine = {
 
     for (let i = 12; i <= 13; i++) {
       if (m[i].status !== 'Completed') {
-        m[i].status = (m[i].aao || m[i].aka) ? 'Scheduled' : 'Pending';
+        const feeder1 = m[(i - 12) * 2 + 8];
+        const feeder2 = m[(i - 12) * 2 + 9];
+        const hasFeederReady = (this.isFeederDone(feeder1) && this.isFeederDone(feeder2));
+        if (hasFeederReady && (m[i].aao || m[i].aka)) {
+          m[i].status = 'Scheduled';
+        } else if (!m[i].aao && !m[i].aka) {
+          m[i].status = hasFeederReady ? 'Empty' : 'Pending';
+        }
       }
     }
 
@@ -277,19 +295,17 @@ const BracketEngine = {
     m[14].aka = m[13].status === 'Completed' ? m[13].winner : null;
 
     if (m[14].status !== 'Completed') {
-      m[14].status = (m[14].aao || m[14].aka) ? 'Scheduled' : 'Pending';
+      const hasFeederReady = (this.isFeederDone(m[12]) && this.isFeederDone(m[13]));
+      if (hasFeederReady && (m[14].aao || m[14].aka)) {
+        m[14].status = 'Scheduled';
+      } else if (!m[14].aao && !m[14].aka) {
+        m[14].status = hasFeederReady ? 'Empty' : 'Pending';
+      }
     }
   },
 
-  // Re-build downstream matches when a match is undone
   rebuildDownstream(bracket) {
-    const m = bracket.matches;
-
-    // Reset status of matches whose inputs changed
-    for (let i = 8; i < 15; i++) {
-      // Re-evaluate inputs
-      this.propagateWinners(bracket);
-    }
+    this.propagateWinners(bracket);
   },
 
   calculateMedals(bracket) {
