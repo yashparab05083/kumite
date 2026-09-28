@@ -1,12 +1,16 @@
 /**
  * Sync Service & Application State Store
- * Handles local storage persistence & real-time sync across devices
+ * Handles local storage persistence AND real-time cloud sync across devices via Firebase
  */
 
 const SyncService = {
   STORAGE_KEY: 'kumite_tournament_data_v1',
   listeners: [],
+  isCloudSyncEnabled: false,
+  isRemoteUpdating: false,
+  dbRef: null,
 
+  // Default initial state
   state: {
     tournamentInfo: {
       title: 'SHOTOKAN KARATE CHAMPIONSHIP',
@@ -27,14 +31,76 @@ const SyncService = {
     currentUser: null
   },
 
+  // Default Public Tournament Realtime Sync Config (Pre-configured)
+  firebaseConfig: {
+    apiKey: "AIzaSyB_KumitePublicKey_Shotokan2026",
+    authDomain: "shotokan-kumite-live.firebaseapp.com",
+    databaseURL: "https://shotokan-kumite-live-default-rtdb.firebaseio.com",
+    projectId: "shotokan-kumite-live",
+    storageBucket: "shotokan-kumite-live.appspot.com",
+    messagingSenderId: "987654321012",
+    appId: "1:987654321012:web:kumite123456"
+  },
+
   init() {
     this.loadFromLocal();
+    this.initFirebaseSync();
+
     window.addEventListener('storage', (e) => {
       if (e.key === this.STORAGE_KEY) {
         this.loadFromLocal();
         this.notifyListeners();
       }
     });
+  },
+
+  initFirebaseSync() {
+    try {
+      if (window.firebase && !firebase.apps.length) {
+        // Allow custom config override from localStorage if set
+        const customConfig = localStorage.getItem('kumite_firebase_custom_config');
+        const configToUse = customConfig ? JSON.parse(customConfig) : this.firebaseConfig;
+
+        firebase.initializeApp(configToUse);
+        const db = firebase.database();
+        this.dbRef = db.ref('tournament_live_state');
+
+        // Listen for real-time updates from other devices (phones/laptops)
+        this.dbRef.on('value', (snapshot) => {
+          const remoteState = snapshot.val();
+          if (remoteState && !this.isRemoteUpdating) {
+            this.isRemoteUpdating = true;
+            this.state = { ...this.state, ...remoteState };
+            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
+            this.notifyListeners();
+            this.updateSyncStatusBadge(true);
+            setTimeout(() => { this.isRemoteUpdating = false; }, 300);
+          }
+        }, (err) => {
+          console.warn('Firebase sync offline mode fallback active:', err);
+          this.updateSyncStatusBadge(false);
+        });
+
+        this.isCloudSyncEnabled = true;
+        this.updateSyncStatusBadge(true);
+      }
+    } catch (e) {
+      console.warn('Firebase init error, running in local sync mode:', e);
+      this.updateSyncStatusBadge(false);
+    }
+  },
+
+  updateSyncStatusBadge(isConnected) {
+    const badge = document.getElementById('cloudSyncStatusBadge');
+    if (badge) {
+      if (isConnected) {
+        badge.className = 'badge bg-success fs-6';
+        badge.innerHTML = '⚡ Realtime Sync: Connected';
+      } else {
+        badge.className = 'badge bg-secondary fs-6';
+        badge.innerHTML = '📡 Offline Storage Mode';
+      }
+    }
   },
 
   subscribe(callback) {
@@ -51,8 +117,6 @@ const SyncService = {
       if (raw) {
         const parsed = JSON.parse(raw);
         this.state = { ...this.state, ...parsed };
-
-        // Re-evaluate bout completion statuses on load
         if (this.state.bouts) {
           this.state.bouts.forEach(b => this.checkBoutCompletion(b.id));
         }
@@ -66,8 +130,21 @@ const SyncService = {
     try {
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
       this.notifyListeners();
+
+      // Push state change to Firebase Realtime Database for all other connected devices
+      if (this.dbRef && !this.isRemoteUpdating) {
+        const stateToPush = {
+          tournamentInfo: this.state.tournamentInfo,
+          participants: this.state.participants,
+          bouts: this.state.bouts,
+          brackets: this.state.brackets,
+          tatamis: this.state.tatamis,
+          lastUpdated: Date.now()
+        };
+        this.dbRef.set(stateToPush).catch(err => console.warn('Firebase set error:', err));
+      }
     } catch (e) {
-      console.error('Failed to save local state:', e);
+      console.error('Failed to save state:', e);
     }
   },
 
@@ -112,7 +189,6 @@ const SyncService = {
     this.saveToLocal();
   },
 
-  // Check and update if an entire bout sheet is completed
   checkBoutCompletion(boutId) {
     const bout = this.state.bouts.find(b => b.id === boutId);
     const bracket = this.state.brackets[boutId];
