@@ -88,9 +88,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         SyncService.setBoutsAndBrackets(bouts, brackets);
         
-        document.getElementById('importStatus').innerText = `Successfully created ${bouts.length} Bout Sheets!`;
+        document.getElementById('importStatus').innerText = `Successfully created ${bouts.length} Bout Sheets! Auto-generating merged PDF download...`;
         renderBoutList('boutSheetsListContainer');
         TatamiManager.renderOrganizerDashboard('tatamiDashboardContainer');
+
+        // Automatically download all bout sheets in 1 merged landscape PDF
+        setTimeout(() => {
+          BoutEditor.downloadAllBoutsPDF();
+        }, 600);
 
       } catch (err) {
         console.error('Error importing Excel:', err);
@@ -120,7 +125,6 @@ function applyUserPermissions() {
   const user = AuthService.currentUser;
   if (!user) return;
 
-  // Update Badge
   document.getElementById('userBadge').innerText = `👤 ${user.name}`;
 
   if (user.role === 'organizer') {

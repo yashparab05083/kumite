@@ -14,7 +14,7 @@ body {
 }
 
 .fs-7 {
-  font-size: 0.82rem;
+  font-size: 0.8rem;
 }
 
 /* Match Card Styles inside Bracket Diagram */
@@ -22,8 +22,8 @@ body {
   background: #ffffff;
   border: 1px solid #dee2e6;
   border-radius: 6px;
-  padding: 6px;
-  width: 175px;
+  padding: 4px;
+  width: 155px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
   cursor: pointer;
   transition: all 0.2s ease-in-out;
@@ -41,17 +41,17 @@ body {
 }
 
 .match-header {
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   border-bottom: 1px solid #eee;
-  padding-bottom: 3px;
-  margin-bottom: 4px;
+  padding-bottom: 2px;
+  margin-bottom: 3px;
 }
 
 .fighter-box {
-  padding: 3px 6px;
+  padding: 2px 4px;
   margin: 2px 0;
   border-radius: 4px;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -82,20 +82,31 @@ body {
 /* Bracket Diagram Container */
 .bracket-diagram-container {
   overflow-x: auto;
-  padding: 10px 0;
+  padding: 5px 0;
+  width: 100%;
 }
 
 .bracket-pool {
-  min-width: 580px;
+  flex: 1;
 }
 
-/* Printable Bout Sheet Styling */
+/* Printable Bout Sheet Styling - Optimized for 1-Page Landscape A4 Fit */
 .bout-sheet-printable {
   background: #ffffff;
   border: 1px solid #ccc;
+  width: 100%;
+  max-width: 1250px;
+  margin: 0 auto;
+  box-sizing: border-box;
+  page-break-inside: avoid !important;
+  page-break-after: always !important;
 }
 
 @media print {
+  @page {
+    size: A4 landscape;
+    margin: 5mm;
+  }
   body * {
     visibility: hidden;
   }
@@ -106,8 +117,12 @@ body {
     position: absolute;
     left: 0;
     top: 0;
-    width: 100%;
+    width: 100% !important;
+    max-width: none !important;
     border: none;
     box-shadow: none !important;
+  }
+  .print-hide {
+    display: none !important;
   }
 }
