@@ -1,0 +1,113 @@
+/* Custom Stylesheet for Shotokan Karate Championship System */
+
+:root {
+  --red-color: #b22222;
+  --blue-color: #1e3f8c;
+  --gold-color: #ffc107;
+  --dark-color: #121212;
+  --light-dark: #212121;
+}
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background-color: #f4f6f9;
+}
+
+.fs-7 {
+  font-size: 0.82rem;
+}
+
+/* Match Card Styles inside Bracket Diagram */
+.match-card {
+  background: #ffffff;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  padding: 6px;
+  width: 175px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.match-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+  border-color: #0d6efd;
+}
+
+.match-card.completed {
+  border-left: 4px solid #198754;
+  background: #f8fff9;
+}
+
+.match-header {
+  font-size: 0.75rem;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 3px;
+  margin-bottom: 4px;
+}
+
+.fighter-box {
+  padding: 3px 6px;
+  margin: 2px 0;
+  border-radius: 4px;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fighter-box.aao {
+  background: #eef4ff;
+  border-left: 3px solid var(--blue-color);
+}
+
+.fighter-box.aka {
+  background: #ffeef0;
+  border-left: 3px solid var(--red-color);
+}
+
+.fighter-box.bye {
+  background: #f8f9fa;
+  color: #6c757d;
+  font-style: italic;
+}
+
+.fighter-box.winner-highlight {
+  font-weight: bold;
+  background: #d1e7dd !important;
+  color: #0f5132;
+}
+
+/* Bracket Diagram Container */
+.bracket-diagram-container {
+  overflow-x: auto;
+  padding: 10px 0;
+}
+
+.bracket-pool {
+  min-width: 580px;
+}
+
+/* Printable Bout Sheet Styling */
+.bout-sheet-printable {
+  background: #ffffff;
+  border: 1px solid #ccc;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .bout-sheet-printable, .bout-sheet-printable * {
+    visibility: visible;
+  }
+  .bout-sheet-printable {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    border: none;
+    box-shadow: none !important;
+  }
+}

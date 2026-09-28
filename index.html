@@ -4,12 +4,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Karate Scoreboard (WKF Rules)</title>
+  <title>Shotokan Karate Championship - Tournament Management & Scoreboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@700&family=Bebas+Neue&display=swap"
-    rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@700&family=Bebas+Neue&display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
   <style>
     :root {
       --red: #b22222;
@@ -21,11 +21,21 @@
 
     body {
       margin: 0;
-      font-family: 'Bebas Neue', sans-serif;
+      background-color: #f4f6f9;
+      min-height: 100vh;
+    }
+
+    .scoreboard-overlay-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
       height: 100vh;
+      background-color: var(--dark);
+      z-index: 5000;
       display: flex;
       flex-direction: column;
-      background-color: var(--dark);
+      font-family: 'Bebas Neue', sans-serif;
     }
 
     .side {
@@ -43,55 +53,45 @@
     }
 
     .side h2 {
-      font-size: clamp(5.5rem, 6vw, 8.5rem);
+      font-size: clamp(3.5rem, 4.5vw, 6.5rem);
       line-height: 1;
       margin: 0;
       font-weight: 700;
     }
 
-    .red-side {
-      background-color: var(--red);
+    .fighter-subtitle {
+      font-size: 2rem;
+      color: #ffd700;
+      margin-top: -10px;
     }
 
-    .blue-side {
-      background-color: var(--blue);
-    }
+    .red-side { background-color: var(--red); }
+    .blue-side { background-color: var(--blue); }
 
     .score {
       font-family: 'Roboto Mono', monospace;
-      font-size: 27rem;
+      font-size: 22rem;
       font-weight: bold;
       margin: 0;
       line-height: 0.9;
-      padding-top: 18px;
+      padding-top: 10px;
       padding-bottom: 8px;
-      margin-top: 0;
     }
 
     .sensu-badge {
       position: absolute;
-      top: 130px;
+      top: 120px;
       left: 50%;
       transform: translateX(-50%);
       display: none;
-      font-size: 2.8rem;
+      font-size: 2.5rem;
       background-color: var(--yellow);
       color: black;
-      padding: 8px 20px;
+      padding: 6px 18px;
       border-radius: 10px;
       font-weight: bold;
       letter-spacing: 0.1em;
-      transition: transform 0.2s ease;
-      width: fit-content;
       z-index: 2;
-    }
-
-    .side.sensu-active {
-      padding-top: 38px;
-    }
-
-    .sensu-badge:hover {
-      transform: scale(1.1);
     }
 
     .header-container {
@@ -102,23 +102,26 @@
       text-align: center;
       padding: 10px;
       z-index: 100;
-      background: transparent;
+      background: rgba(0, 0, 0, 0.4);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: white;
     }
 
     .header-container img {
-      max-height: 200px;
+      max-height: 80px;
       object-fit: contain;
-      margin-left: 60px;
     }
 
     .timer-card {
       position: absolute;
-      top: 50%;
+      top: 52%;
       left: 50%;
       transform: translate(-50%, -50%);
       text-align: center;
       background: var(--light-dark);
-      padding: 0.5rem 4rem;
+      padding: 0.5rem 3rem;
       border-radius: 20px;
       box-shadow: 0 0 40px rgba(255, 255, 255, 0.1);
       z-index: 200;
@@ -130,509 +133,361 @@
 
     .timer-card .display-time {
       font-family: 'Roboto Mono', monospace;
-      font-size: 6rem;
+      font-size: 5.5rem;
       font-weight: bold;
       color: var(--yellow);
       letter-spacing: 5px;
       text-shadow: 0 0 10px var(--yellow);
     }
 
-    .timer-card .btn-lg {
-      font-size: 1.5rem;
-      padding: .75rem 1.5rem;
-    }
-
     .score-buttons {
       display: flex;
-      flex-direction: row;
-      align-items: center;
-      justify-content: center;
       gap: 10px;
-      margin-top: 0;
     }
 
     .score-buttons .btn {
-      min-width: 90px;
-      font-size: 2rem;
-      padding: 1.5rem;
+      min-width: 80px;
+      font-size: 1.8rem;
+      padding: 1rem;
     }
 
-    .footer-bar {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      width: 100%;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      padding: 10px;
-      background: var(--light-dark);
-      color: white;
-      z-index: 100;
-      border-top: 2px solid rgba(255, 255, 255, 0.1);
-    }
-
-    .lead-select {
-      color: black;
-    }
-
-    .timer-inputs {
-      display: flex;
-      justify-content: center;
-      gap: 10px;
-      margin-top: 20px;
-    }
-
-    .timer-inputs input {
-      width: 60px;
-      text-align: center;
-      color: white;
-      background-color: #333;
-      border: 1px solid var(--yellow);
-    }
-
-    /* Button color overrides for better contrast */
-    .btn-warning {
-      background-color: var(--yellow);
-      color: var(--dark);
-      border-color: var(--yellow);
-    }
-
-    .btn-info {
-      background-color: #0d6efd;
-      border-color: #0d6efd;
-    }
-
-    /* New Score History and Penalty Styles */
     .score-history {
       display: flex;
-      flex-direction: row;
-      align-items: center;
-      justify-content: center;
       gap: 5px;
-      margin-top: 0;
-      min-height: 40px;
+      min-height: 35px;
     }
 
     .score-popup {
       font-family: 'Bebas Neue', sans-serif;
-      font-size: 2rem;
+      font-size: 1.8rem;
       background-color: #fff;
       color: var(--dark);
-      padding: 5px 15px;
+      padding: 3px 12px;
       border-radius: 5px;
       font-weight: bold;
-      animation: fadeIn 0.5s ease-out;
-      white-space: nowrap;
-      /* Prevent numbers from wrapping */
-    }
-
-    .penalty-container {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 10px;
-      margin-top: 0;
     }
 
     .penalty-blocks {
       display: flex;
       gap: 6px;
-      margin-top: 0;
-      flex-wrap: nowrap;
     }
 
     .penalty-block {
-      width: 80px;
-      height: 80px;
+      width: 60px;
+      height: 60px;
       border-radius: 5px;
       color: white;
       display: none;
       justify-content: center;
       align-items: center;
       font-weight: bold;
-      font-size: 4.1rem;
+      font-size: 3rem;
       border: 2px solid;
-      letter-spacing: 0.02em;
-      padding: 0;
-      line-height: 1;
     }
 
-    .chukoku {
-      background-color: #ff9800;
-      border-color: #fff;
-    }
+    .chukoku { background-color: #ff9800; border-color: #fff; }
+    .hansoku-chui { background-color: #f44336; border-color: #fff; }
+    .hansoku { background-color: #616161; border-color: #fff; }
 
-    .keikoku {
-      background-color: #ff5722;
-      border-color: #fff;
-    }
-
-    .hansoku-chui {
-      background-color: #f44336;
-      border-color: #fff;
-    }
-
-    .hansoku {
-      background-color: #616161;
-      border-color: #fff;
-    }
-
-    .button-group-bottom {
-      display: flex;
-      justify-content: center;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 8px;
-    }
-
-    .lead-options {
-      margin-top: 20px;
-      text-align: center;
-    }
-
-    .lead-options span {
-      color: var(--yellow);
-    }
-
-    .powered-by-container {
-      position: absolute;
-      top: calc(50% + 181px);
-      /* Adjusts position just below timer card */
-      left: 50%;
-      transform: translateX(-50%);
-      text-align: center;
-      z-index: 500;
-    }
-
-    .powered-label {
-      color: #ffd700;
-      font-size: 1.8rem;
-      font-family: 'Bebas Neue', sans-serif;
-      margin-bottom: 10px;
-      text-shadow: 0 0 8px rgba(255, 215, 0, 0.8);
-      letter-spacing: 1px;
-    }
-
-    .zenkaido-logo-large {
-      height: 170px;
-      /* visible and strong */
-      width: auto;
-      display: block;
-      margin: 0 auto;
-      filter: drop-shadow(0 0 10px rgba(255, 215, 0, 0.7));
-    }
-
-    /* Small circular toggle icon */
-    .color-settings-toggle {
-      position: fixed;
-      bottom: 25px;
-      right: 25px;
-      width: 50px;
-      height: 50px;
-      background: #ffd700;
-      color: #121212;
-      border-radius: 50%;
-      font-size: 1.8rem;
-      text-align: center;
-      line-height: 50px;
-      cursor: pointer;
-      box-shadow: 0 0 12px rgba(255, 215, 0, 0.6);
-      z-index: 1000;
-      transition: all 0.3s ease;
-    }
-
-    .color-settings-toggle:hover {
-      transform: scale(1.1);
-      box-shadow: 0 0 18px rgba(255, 215, 0, 0.9);
-    }
-
-    /* Hidden settings panel */
-    .color-settings {
-      position: fixed;
-      bottom: 90px;
-      right: 25px;
-      background: rgba(33, 33, 33, 0.95);
-      border: 2px solid rgba(255, 215, 0, 0.4);
-      border-radius: 10px;
-      padding: 12px 18px;
-      color: #f5f5f5;
-      display: none;
-      /* hidden by default */
-      align-items: center;
-      gap: 10px;
-      z-index: 999;
-      font-family: 'Bebas Neue', sans-serif;
-      box-shadow: 0 0 12px rgba(255, 215, 0, 0.5);
-      transition: all 0.3s ease-in-out;
-    }
-
-    .color-settings.show {
-      display: flex;
-    }
-
-    .color-settings label {
-      margin-right: 4px;
-      font-size: 1.1rem;
-    }
-
-    .color-settings input[type="color"] {
-      border: none;
-      background: none;
-      width: 35px;
-      height: 35px;
-      cursor: pointer;
-      border-radius: 5px;
-    }
-
-    .color-settings button {
-      font-family: 'Bebas Neue', sans-serif;
-      font-weight: bold;
-      letter-spacing: 1px;
-      padding: 6px 10px;
-    }
-
-    /* ===== WINNER ANIMATION OVERLAY ===== */
     .winner-overlay {
       position: fixed;
       top: 0;
       left: 0;
       width: 100%;
       height: 100%;
-      /* Darker background for full focus */
       background: radial-gradient(circle at center, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 1) 100%);
       display: none;
       align-items: center;
       justify-content: center;
-      z-index: 2000;
-      overflow: hidden;
-    }
-
-
-    .winner-content {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      text-align: center;
+      z-index: 6000;
     }
 
     .winner-image {
-      width: 90%;
-      /* Make it cover almost full width */
-      max-width: none;
-      /* Remove max width limit */
+      width: 80%;
+      max-width: 800px;
       height: auto;
-      /* Keep natural proportions */
-      opacity: 0;
-      transform: scale(0.8);
-      /* Slight zoom effect */
       filter: drop-shadow(0 0 40px rgba(255, 215, 0, 0.7));
-      animation: none;
     }
 
-
-    /* Reason text below the image */
     .win-reason {
       margin-top: 20px;
       color: #ffd700;
-      font-family: 'Bebas Neue', sans-serif;
       font-size: 2.5rem;
       letter-spacing: 2px;
-      text-shadow: 0 0 10px rgba(255, 215, 0, 0.8);
-      opacity: 0;
-      transform: translateY(20px);
-      animation: none;
-    }
-
-    /* Animations */
-    @keyframes zoomIn {
-      0% {
-        transform: scale(0.5);
-        opacity: 0;
-      }
-
-      100% {
-        transform: scale(1);
-        opacity: 1;
-      }
-    }
-
-    @keyframes pulse {
-
-      0%,
-      100% {
-        transform: scale(1);
-        filter: drop-shadow(0 0 25px rgba(255, 215, 0, 0.6));
-      }
-
-      50% {
-        transform: scale(1.05);
-        filter: drop-shadow(0 0 40px rgba(255, 215, 0, 1));
-      }
-    }
-
-    @keyframes fadeOut {
-      0% {
-        opacity: 1;
-      }
-
-      100% {
-        opacity: 0;
-      }
-    }
-
-    @keyframes slideUp {
-      0% {
-        opacity: 0;
-        transform: translateY(30px);
-      }
-
-      100% {
-        opacity: 1;
-        transform: translateY(0);
-      }
     }
   </style>
 </head>
 
 <body>
 
-  <div class="header-container">
-    <img src="header1.png" alt="Shotokan Karate Championship 2025" class="img-fluid">
-  </div>
-
-  <div class="d-flex flex-grow-1">
-    <div class="side red-side">
-      <h2 class="display-4">AKA</h2>
-      <div class="sensu-badge" id="redSensu">Senshu</div>
-      <div class="score" id="redScore">0</div>
-      <div class="score-history" id="redScoreHistory"></div>
-      <div class="penalty-container">
-        <div class="penalty-blocks">
-          <div id="redC1" class="penalty-block chukoku">C1</div>
-          <div id="redC2" class="penalty-block chukoku">C2</div>
-          <div id="redC3" class="penalty-block chukoku">C3</div>
-          <div id="redHC" class="penalty-block hansoku-chui">HC</div>
-          <div id="redH" class="penalty-block hansoku">H</div>
-        </div>
-        <div class="d-flex justify-content-center gap-2">
-          <button onclick="removePenalty('red')" class="btn btn-danger btn-sm">Remove</button>
-          <button onclick="addPenalty('red')" class="btn btn-outline-light btn-sm">Add Penalty</button>
-        </div>
-      </div>
-      <div class="score-buttons">
-        <button onclick="addScore('red', 3)" class="btn btn-warning btn-lg">3</button>
-        <button onclick="addScore('red', 2)" class="btn btn-warning btn-lg">2</button>
-        <button onclick="addScore('red', 1)" class="btn btn-warning btn-lg">1</button>
-      </div>
-      <div class="button-group-bottom">
-        <button onclick="removeScore('red')" class="btn btn-danger btn-sm">Remove Score</button>
-        <button onclick="awardSensu('red')" class="btn btn-info btn-sm">Award Sensu</button>
-      </div>
-    </div>
-
-    <div class="side blue-side">
-      <h2 class="display-4">AAO</h2>
-      <div class="sensu-badge" id="blueSensu">Senshu</div>
-      <div class="score" id="blueScore">0</div>
-      <div class="score-history" id="blueScoreHistory"></div>
-      <div class="penalty-container">
-        <div class="penalty-blocks">
-          <div id="blueC1" class="penalty-block chukoku">C1</div>
-          <div id="blueC2" class="penalty-block chukoku">C2</div>
-          <div id="blueC3" class="penalty-block chukoku">C3</div>
-          <div id="blueHC" class="penalty-block hansoku-chui">HC</div>
-          <div id="blueH" class="penalty-block hansoku">H</div>
-        </div>
-        <div class="d-flex justify-content-center gap-2">
-          <button onclick="removePenalty('blue')" class="btn btn-danger btn-sm">Remove</button>
-          <button onclick="addPenalty('blue')" class="btn btn-outline-light btn-sm">Add Penalty</button>
+  <!-- MAIN TOP NAVIGATION BAR -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
+    <div class="container-fluid">
+      <a class="navbar-brand fw-bold text-warning" href="#">🥋 SHOTOKAN KARATE CHAMPIONSHIP</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav me-auto mb-2 mb-lg-0" id="mainNavTabs">
+          <li class="nav-item nav-organizer-only">
+            <a class="nav-link active" id="tabOrganizer" href="#">Organizer Control Center</a>
+          </li>
+          <li class="nav-item nav-organizer-only">
+            <a class="nav-link" id="tabBoutSheets" href="#">Bout Sheets & Brackets</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" id="tabTatami" href="#">Tatami Ring Controls</a>
+          </li>
+        </ul>
+        <div class="d-flex align-items-center gap-3">
+          <span id="userBadge" class="badge bg-primary fs-6">👤 Guest</span>
+          <button class="btn btn-outline-warning btn-sm nav-organizer-only" id="btnExportResults">📊 Export Results Excel</button>
+          <button class="btn btn-danger btn-sm fw-bold" onclick="AuthService.logout()">🚪 Logout</button>
         </div>
       </div>
-      <div class="score-buttons">
-        <button onclick="addScore('blue', 3)" class="btn btn-warning btn-lg">3</button>
-        <button onclick="addScore('blue', 2)" class="btn btn-warning btn-lg">2</button>
-        <button onclick="addScore('blue', 1)" class="btn btn-warning btn-lg">1</button>
+    </div>
+  </nav>
+
+  <!-- APP VIEW PANES -->
+  <div class="container-fluid py-4">
+
+    <!-- 1. ORGANIZER CONTROL CENTER VIEW -->
+    <div id="organizerView" class="view-pane">
+      <div class="row g-4 mb-4">
+        <!-- Excel Upload Card -->
+        <div class="col-md-6">
+          <div class="card shadow-sm h-100 border-primary">
+            <div class="card-header bg-primary text-white">
+              <h5 class="m-0 fw-bold">📥 Upload Participant Excel File</h5>
+            </div>
+            <div class="card-body">
+              <p class="text-muted">Select your participant Excel sheet containing Name, Gender, Age, Belt (Kyu 9 to Kudan -9), Branch/Dojo, Instructor Name, and School Hours (Y/N).</p>
+              <input type="file" id="excelFileInput" class="form-control mb-3" accept=".xlsx, .xls">
+              <div id="importStatus" class="fw-bold text-success"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tournament Overview Stats -->
+        <div class="col-md-6">
+          <div class="card shadow-sm h-100 border-dark">
+            <div class="card-header bg-dark text-white">
+              <h5 class="m-0 fw-bold">🏆 Championship Information</h5>
+            </div>
+            <div class="card-body">
+              <h4 class="fw-bold text-dark">Shotokan Karate Championship 2026</h4>
+              <p class="text-muted mb-2">Automated 16-slot infinity seeding bout sheets & 8 Tatami live score integration.</p>
+              <div class="d-flex gap-3">
+                <span class="badge bg-primary fs-6">8 Tatami Rings</span>
+                <span class="badge bg-success fs-6">WKF Kumite Rules</span>
+                <span class="badge bg-warning text-dark fs-6">Consolidated Excel Export</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="button-group-bottom">
-        <button onclick="removeScore('blue')" class="btn btn-danger btn-sm">Remove Score</button>
-        <button onclick="awardSensu('blue')" class="btn btn-info btn-sm">Award Sensu</button>
+
+      <!-- Tatami Rings Live Assignment Grid -->
+      <h4 class="fw-bold mb-3">🥋 Live Tatami Rings (1 to 8) Assignment & Status</h4>
+      <div id="tatamiDashboardContainer"></div>
+    </div>
+
+    <!-- 2. BOUT SHEETS & BRACKETS VIEW -->
+    <div id="boutEditorView" class="view-pane" style="display: none;">
+      <div class="row g-4">
+        <div class="col-md-3">
+          <div class="card shadow-sm">
+            <div class="card-header bg-dark text-white fw-bold">Bout Sheets Queue</div>
+            <div class="card-body p-2" id="boutSheetsListContainer"></div>
+          </div>
+        </div>
+        <div class="col-md-9">
+          <div id="activeBoutDiagramContainer">
+            <div class="alert alert-secondary text-center py-5">Select a bout sheet from the list on the left to view and print the 16-slot championship bracket.</div>
+          </div>
+        </div>
       </div>
     </div>
+
+    <!-- 3. TATAMI RING OPERATOR VIEW -->
+    <div id="tatamiView" class="view-pane" style="display: none;">
+      <div class="d-flex align-items-center mb-4">
+        <label class="fw-bold me-3 fs-5">Active Tatami Ring:</label>
+        <select id="tatamiRingSelect" class="form-select w-auto fs-5 fw-bold text-primary border-2 border-primary"></select>
+      </div>
+      <div id="tatamiOperatorContainer"></div>
+    </div>
+
   </div>
 
-  <div class="timer-card">
-    <div class="display-time" id="time">00:00</div>
-    <div class="mt-3">
-      <button onclick="startTimer()" class="btn btn-success btn-lg">Start</button>
-      <button onclick="stopTimer()" class="btn btn-danger btn-lg">Stop</button>
-      <button onclick="resetTimer()" class="btn btn-secondary btn-lg">Reset</button>
+  <!-- 4. LIVE MATCH SCOREBOARD OVERLAY (FullScreen) -->
+  <div id="scoreboardSection" class="scoreboard-overlay-container" style="display: none;">
+    <div class="header-container">
+      <div>
+        <h3 id="matchCategoryTitle" class="m-0 text-warning fw-bold">Category Title</h3>
+      </div>
+      <img src="header1.png" alt="Shotokan Championship Logo">
+      <button class="btn btn-outline-light btn-sm" onclick="ScoreboardController.closeScoreboard()">✖ Exit Match</button>
     </div>
-    <div class="timer-inputs mt-3">
-      <input type="number" id="minuteInput" class="form-control" placeholder="min" min="0" value="0">
-      <input type="number" id="secondInput" class="form-control" placeholder="sec" min="0" max="59" value="0">
-    </div>
-    <div class="lead-options">
-      <span>Victory by lead: </span>
-      <select id="leadSelect" class="form-select form-select-sm d-inline-block w-auto lead-select">
-        <option value="0">None</option>
-        <option value="4">4 points</option>
-        <option value="6">6 points</option>
-        <option value="8">8 points</option>
-      </select>
-    </div>
-  </div>
-  <!-- Powered by Zenkaido -->
-  <div class="powered-by-container">
-    <p class="powered-label">Powered By:</p>
-    <img src="zenkaido-logo.png" alt="Zenkaido Logo" class="zenkaido-logo-large">
-  </div>
 
-  <!-- Color Settings Toggle -->
-  <div class="color-settings-toggle" onclick="toggleColorSettings()">🎨</div>
+    <div class="d-flex flex-grow-1">
+      <!-- AKA SIDE (RED) -->
+      <div class="side red-side">
+        <h2 class="display-4">AKA</h2>
+        <div id="akaFighterName" class="fighter-subtitle">AKA Fighter</div>
+        <div class="sensu-badge" id="redSensu">Senshu</div>
+        <div class="score" id="redScore">0</div>
+        <div class="score-history" id="redScoreHistory"></div>
+        <div class="penalty-container">
+          <div class="penalty-blocks">
+            <div id="redC1" class="penalty-block chukoku">C1</div>
+            <div id="redC2" class="penalty-block chukoku">C2</div>
+            <div id="redC3" class="penalty-block chukoku">C3</div>
+            <div id="redHC" class="penalty-block hansoku-chui">HC</div>
+            <div id="redH" class="penalty-block hansoku">H</div>
+          </div>
+          <div class="d-flex justify-content-center gap-2 mt-2">
+            <button onclick="removePenalty('red')" class="btn btn-danger btn-sm">Remove</button>
+            <button onclick="addPenalty('red')" class="btn btn-outline-light btn-sm">Add Penalty</button>
+          </div>
+        </div>
+        <div class="score-buttons mt-3">
+          <button onclick="addScore('red', 3)" class="btn btn-warning btn-lg">+3 Ippon</button>
+          <button onclick="addScore('red', 2)" class="btn btn-warning btn-lg">+2 Waza-ari</button>
+          <button onclick="addScore('red', 1)" class="btn btn-warning btn-lg">+1 Yuko</button>
+        </div>
+        <div class="mt-2">
+          <button onclick="removeScore('red')" class="btn btn-danger btn-sm">Undo Point</button>
+          <button onclick="awardSensu('red')" class="btn btn-info btn-sm">Award Sensu</button>
+        </div>
+      </div>
 
-  <!-- Hidden Color Settings Panel -->
-  <div class="color-settings" id="colorSettings">
-    <div>
-      <label for="redColorPicker">AKA:</label>
-      <input type="color" id="redColorPicker" value="#b22222">
+      <!-- AAO SIDE (BLUE) -->
+      <div class="side blue-side">
+        <h2 class="display-4">AAO</h2>
+        <div id="aaoFighterName" class="fighter-subtitle">AAO Fighter</div>
+        <div class="sensu-badge" id="blueSensu">Senshu</div>
+        <div class="score" id="blueScore">0</div>
+        <div class="score-history" id="blueScoreHistory"></div>
+        <div class="penalty-container">
+          <div class="penalty-blocks">
+            <div id="blueC1" class="penalty-block chukoku">C1</div>
+            <div id="blueC2" class="penalty-block chukoku">C2</div>
+            <div id="blueC3" class="penalty-block chukoku">C3</div>
+            <div id="blueHC" class="penalty-block hansoku-chui">HC</div>
+            <div id="blueH" class="penalty-block hansoku">H</div>
+          </div>
+          <div class="d-flex justify-content-center gap-2 mt-2">
+            <button onclick="removePenalty('blue')" class="btn btn-danger btn-sm">Remove</button>
+            <button onclick="addPenalty('blue')" class="btn btn-outline-light btn-sm">Add Penalty</button>
+          </div>
+        </div>
+        <div class="score-buttons mt-3">
+          <button onclick="addScore('blue', 3)" class="btn btn-warning btn-lg">+3 Ippon</button>
+          <button onclick="addScore('blue', 2)" class="btn btn-warning btn-lg">+2 Waza-ari</button>
+          <button onclick="addScore('blue', 1)" class="btn btn-warning btn-lg">+1 Yuko</button>
+        </div>
+        <div class="mt-2">
+          <button onclick="removeScore('blue')" class="btn btn-danger btn-sm">Undo Point</button>
+          <button onclick="awardSensu('blue')" class="btn btn-info btn-sm">Award Sensu</button>
+        </div>
+      </div>
     </div>
-    <div>
-      <label for="blueColorPicker">AAO:</label>
-      <input type="color" id="blueColorPicker" value="#1e3f8c">
+
+    <div class="timer-card">
+      <div class="display-time" id="time">03:00</div>
+      <div class="mt-2">
+        <button onclick="startTimer()" class="btn btn-success btn-lg">Start</button>
+        <button onclick="stopTimer()" class="btn btn-danger btn-lg">Stop</button>
+        <button onclick="resetTimer()" class="btn btn-secondary btn-lg">Reset</button>
+      </div>
+      <div class="d-flex gap-2 mt-2">
+        <input type="number" id="minuteInput" class="form-control text-center bg-dark text-white border-warning" style="width: 70px;" min="0" value="3">
+        <input type="number" id="secondInput" class="form-control text-center bg-dark text-white border-warning" style="width: 70px;" min="0" max="59" value="0">
+      </div>
+      <div class="mt-2 text-warning">
+        <span>Lead Victory Margin: </span>
+        <select id="leadSelect" class="form-select form-select-sm d-inline-block w-auto">
+          <option value="0">None</option>
+          <option value="4">4 points</option>
+          <option value="6">6 points</option>
+          <option value="8" selected>8 points</option>
+        </select>
+      </div>
     </div>
-    <button class="btn btn-warning btn-sm" onclick="swapSides()">Swap</button>
   </div>
 
   <!-- Winner Animation Overlay -->
   <div id="winnerOverlay" class="winner-overlay">
-    <div class="winner-content">
+    <div class="text-center">
       <img id="winnerImage" class="winner-image" src="" alt="Winner">
       <h2 id="winReason" class="win-reason"></h2>
     </div>
   </div>
 
-
-
+  <!-- LOGIN MODAL -->
+  <div class="modal fade" id="loginModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content shadow-lg border-2 border-primary">
+        <div class="modal-header bg-dark text-white">
+          <h5 class="modal-title fw-bold">🥋 Tournament System Login</h5>
+        </div>
+        <div class="modal-body p-4">
+          <div id="loginError" class="alert alert-danger p-2 small mb-3" style="display: none;"></div>
+          <form id="loginForm">
+            <div class="mb-3">
+              <label class="form-label fw-bold">Select Account / User Role:</label>
+              <select id="loginUserSelect" class="form-select fw-bold">
+                <option value="organizer">Main Organizer / Tournament Director</option>
+                <option value="tatami1">Tatami 1 Operator</option>
+                <option value="tatami2">Tatami 2 Operator</option>
+                <option value="tatami3">Tatami 3 Operator</option>
+                <option value="tatami4">Tatami 4 Operator</option>
+                <option value="tatami5">Tatami 5 Operator</option>
+                <option value="tatami6">Tatami 6 Operator</option>
+                <option value="tatami7">Tatami 7 Operator</option>
+                <option value="tatami8">Tatami 8 Operator</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-bold">Password:</label>
+              <input type="password" id="loginPassword" class="form-control" placeholder="Enter password" required>
+              <small class="text-muted">Default Organizer: <code>admin123</code> | Tatamis: <code>tatami1pass</code> ... <code>tatami8pass</code></small>
+            </div>
+            <button type="submit" class="btn btn-primary w-100 fw-bold py-2">Sign In</button>
+          </form>
+        </div>
+      </div>
+    </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- Dynamic Modal Container -->
+  <div id="modalContainer"></div>
 
+  <!-- External JS Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <!-- Application Modules -->
+  <script src="js/auth-service.js"></script>
+  <script src="js/excel-importer.js"></script>
+  <script src="js/bracket-engine.js"></script>
+  <script src="js/sync-service.js"></script>
+  <script src="js/scoreboard-controller.js"></script>
+  <script src="js/tatami-manager.js"></script>
+  <script src="js/bout-editor.js"></script>
+  <script src="js/export-engine.js"></script>
+  <script src="js/app.js"></script>
+
+  <!-- Original Scoreboard Script Logic -->
   <script>
     let redScore = 0, blueScore = 0;
-    let timer, timeLeft = 0;
-    const penaltyLevels = ["None", "C1", "C2", "C3", "HC", "H"];
+    let timer, timeLeft = 180;
+    const penaltyBlocks = ['C1', 'C2', 'C3', 'HC', 'H'];
     let penalties = { red: { cat1: 0 }, blue: { cat1: 0 } };
     let sensu = null;
-    const penaltyBlocks = ['C1', 'C2', 'C3', 'HC', 'H'];
     let redScoreHistory = [];
     let blueScoreHistory = [];
-
-    document.addEventListener("DOMContentLoaded", () => {
-      document.getElementById("minuteInput").value = 3;
-      document.getElementById("secondInput").value = 0;
-      resetTimer();
-    });
 
     function updateScores() {
       document.getElementById("redScore").innerText = redScore;
@@ -654,27 +509,14 @@
     }
 
     function removeScore(player) {
-      if (player === "red") {
-        if (redScoreHistory.length > 0) {
-          redScore -= redScoreHistory.pop();
-          updateScoreHistory('red', redScoreHistory);
-        }
-        if (redScore === 0 && sensu === 'red') {
-          sensu = null;
-          document.getElementById("redSensu").style.display = "none";
-        }
-      } else {
-        if (blueScoreHistory.length > 0) {
-          blueScore -= blueScoreHistory.pop();
-          updateScoreHistory('blue', blueScoreHistory);
-        }
-        if (blueScore === 0 && sensu === 'blue') {
-          sensu = null;
-          document.getElementById("blueSensu").style.display = "none";
-        }
+      if (player === "red" && redScoreHistory.length > 0) {
+        redScore -= redScoreHistory.pop();
+        updateScoreHistory('red', redScoreHistory);
+      } else if (player === "blue" && blueScoreHistory.length > 0) {
+        blueScore -= blueScoreHistory.pop();
+        updateScoreHistory('blue', blueScoreHistory);
       }
       updateScores();
-      checkVictoryMargin();
     }
 
     function updateScoreHistory(player, history) {
@@ -683,7 +525,7 @@
       history.forEach(score => {
         const scorePopup = document.createElement('div');
         scorePopup.classList.add('score-popup');
-        scorePopup.innerText = score;
+        scorePopup.innerText = '+' + score;
         historyContainer.appendChild(scorePopup);
       });
     }
@@ -695,7 +537,7 @@
         document.getElementById(blockId).style.display = "flex";
       }
       if (penalties[player].cat1 >= 5) {
-        declareWinner(player === "red" ? "Blue (Red disqualified)" : "Red (Blue disqualified)");
+        declareWinner(player === "red" ? "blue" : "red", "Opponent Disqualified (5 Penalties)");
       }
     }
 
@@ -707,80 +549,38 @@
       }
     }
 
-
     function awardSensu(player) {
       if (sensu === null) {
         sensu = player;
-        document.querySelectorAll('.side').forEach(side => side.classList.add('sensu-active'));
-
-        document.getElementById("redSensu").style.display = "none";
-        document.getElementById("blueSensu").style.display = "none";
-        document.getElementById(player + "Sensu").style.display = "inline-block";
-      } else {
-        alert("Sensu has already been awarded!");
+        document.getElementById("redSensu").style.display = player === 'red' ? "inline-block" : "none";
+        document.getElementById("blueSensu").style.display = player === 'blue' ? "inline-block" : "none";
       }
     }
 
-    function declareWinner(name) {
+    function declareWinner(winnerSide, reasonText) {
       stopTimer();
 
       const overlay = document.getElementById("winnerOverlay");
       const image = document.getElementById("winnerImage");
-      const reasonText = document.getElementById("winReason");
+      const reasonDisplay = document.getElementById("winReason");
 
-      // Set image and reason dynamically
-      let reason = "";
-
-      // Detect reason based on input name
-      if (name.toLowerCase().includes("lead")) {
-        reason = name.match(/lead of (\d+)/i) ? `Victory by Lead of ${RegExp.$1} Points` : "Victory by Lead";
-      } else if (name.toLowerCase().includes("disqualified")) {
-        reason = "Opponent Disqualified";
-      } else if (name.toLowerCase().includes("sensu")) {
-        reason = "Victory by Sensu (First Score)";
-      } else if (name.toLowerCase().includes("draw")) {
-        reason = "Match Drawn";
-      } else {
-        reason = "Time Up";
-      }
-
-      // Select image based on side
-      if (name.toLowerCase().includes("red")) {
-        image.src = "aka_wins.png"; // 🔴 Red side image
-      } else if (name.toLowerCase().includes("blue")) {
-        image.src = "aao_wins.png"; // 🔵 Blue side image
+      if (winnerSide === "red") {
+        image.src = "aka_wins.png";
+      } else if (winnerSide === "blue") {
+        image.src = "aao_wins.png";
       } else {
         image.src = "";
       }
 
-      // Reset animation and show overlay
+      reasonDisplay.textContent = reasonText || "Victory Declared";
       overlay.style.display = "flex";
-      image.style.animation = "none";
-      reasonText.style.animation = "none";
-      void image.offsetWidth; // force reflow
 
-      image.style.opacity = "1";
-      image.style.animation = "zoomIn 1s ease-out forwards, pulse 2s infinite ease-in-out";
-      reasonText.textContent = reason;
-      reasonText.style.opacity = "1";
-      reasonText.style.animation = "slideUp 1s ease-out 0.8s forwards";
+      ScoreboardController.commitCurrentMatch(winnerSide, reasonText);
 
-      // Hide after ~12 seconds
       setTimeout(() => {
-        overlay.style.animation = "fadeOut 1.5s ease forwards";
-        setTimeout(() => {
-          overlay.style.display = "none";
-          image.style.animation = "none";
-          reasonText.style.animation = "none";
-          image.style.opacity = "0";
-          reasonText.style.opacity = "0";
-        }, 1500);
-      }, 12000);
+        overlay.style.display = "none";
+      }, 2500);
     }
-
-
-
-
 
     function startTimer() {
       if (timer) return;
@@ -788,20 +588,19 @@
         if (timeLeft <= 0) {
           stopTimer();
           if (redScore > blueScore) {
-            declareWinner("Red");
+            declareWinner("red", "Time Up - Aka Wins");
           } else if (blueScore > redScore) {
-            declareWinner("Blue");
+            declareWinner("blue", "Time Up - Aao Wins");
           } else {
-            if (sensu === 'red') declareWinner("Red (Sensu)");
-            else if (sensu === 'blue') declareWinner("Blue (Sensu)");
-            else declareWinner("Draw");
+            if (sensu === 'red') declareWinner("red", "Victory by Senshu");
+            else if (sensu === 'blue') declareWinner("blue", "Victory by Senshu");
+            else declareWinner("draw", "Match Drawn");
           }
         } else {
           timeLeft--;
           let minutes = Math.floor(timeLeft / 60);
           let seconds = timeLeft % 60;
-          document.getElementById("time").innerText =
-            `${minutes}:${seconds < 10 ? "0" + seconds : seconds}`;
+          document.getElementById("time").innerText = `${minutes}:${seconds < 10 ? "0" + seconds : seconds}`;
         }
       }, 1000);
     }
@@ -813,116 +612,36 @@
 
     function resetTimer() {
       stopTimer();
-
-      const minutes = parseInt(document.getElementById("minuteInput").value) || 0;
-      const seconds = parseInt(document.getElementById("secondInput").value) || 0;
-
-      timeLeft = (minutes * 60) + seconds;
-
-      document.getElementById("time").innerText =
-        `${minutes}:${seconds < 10 ? "0" + seconds : seconds}`;
+      const mins = parseInt(document.getElementById("minuteInput").value) || 3;
+      const secs = parseInt(document.getElementById("secondInput").value) || 0;
+      timeLeft = (mins * 60) + secs;
+      document.getElementById("time").innerText = `${mins}:${secs < 10 ? "0" + secs : secs}`;
 
       redScore = 0; blueScore = 0; updateScores();
       penalties = { red: { cat1: 0 }, blue: { cat1: 0 } };
-      redScoreHistory = [];
-      blueScoreHistory = [];
-      updateScoreHistory('red', redScoreHistory);
-      updateScoreHistory('blue', blueScoreHistory);
+      redScoreHistory = []; blueScoreHistory = [];
+      updateScoreHistory('red', []); updateScoreHistory('blue', []);
 
-      document.getElementById("redC1").style.display = "none";
-      document.getElementById("redC2").style.display = "none";
-      document.getElementById("redC3").style.display = "none";
-      document.getElementById("redHC").style.display = "none";
-      document.getElementById("redH").style.display = "none";
-      document.getElementById("blueC1").style.display = "none";
-      document.getElementById("blueC2").style.display = "none";
-      document.getElementById("blueC3").style.display = "none";
-      document.getElementById("blueHC").style.display = "none";
-      document.getElementById("blueH").style.display = "none";
+      penaltyBlocks.forEach(b => {
+        document.getElementById("red" + b).style.display = "none";
+        document.getElementById("blue" + b).style.display = "none";
+      });
 
       sensu = null;
-      document.querySelectorAll('.side').forEach(side => side.classList.remove('sensu-active'));
       document.getElementById("redSensu").style.display = "none";
       document.getElementById("blueSensu").style.display = "none";
-
-      document.getElementById("winner").innerText = "";
     }
 
-    let leadCheckTimeout = null; // global tracker for timeout
-
-function checkVictoryMargin() {
-  // Clear any previous pending checks
-  if (leadCheckTimeout) {
-    clearTimeout(leadCheckTimeout);
-  }
-
-  // Wait 1 second before checking lead (to allow simultaneous points)
-  leadCheckTimeout = setTimeout(() => {
-    let leadOption = parseInt(document.getElementById("leadSelect").value);
-
-    if (leadOption > 0) {
-      if (redScore - blueScore >= leadOption) {
-        declareWinner("Red (Lead of " + leadOption + " points)");
-      } else if (blueScore - redScore >= leadOption) {
-        declareWinner("Blue (Lead of " + leadOption + " points)");
+    function checkVictoryMargin() {
+      const leadOption = parseInt(document.getElementById("leadSelect").value, 10);
+      if (leadOption > 0) {
+        if (redScore - blueScore >= leadOption) {
+          declareWinner("red", `Lead Victory by ${leadOption} Points`);
+        } else if (blueScore - redScore >= leadOption) {
+          declareWinner("blue", `Lead Victory by ${leadOption} Points`);
+        }
       }
     }
-
-    leadCheckTimeout = null; // reset
-  }, 5000); // ⏱ 5 second grace period
-}
-
-    // Change colors dynamically
-    document.getElementById("redColorPicker").addEventListener("input", (e) => {
-      document.querySelector(".red-side").style.backgroundColor = e.target.value;
-    });
-
-    document.getElementById("blueColorPicker").addEventListener("input", (e) => {
-      document.querySelector(".blue-side").style.backgroundColor = e.target.value;
-    });
-
-    // Swap sides visually
-    function swapSides() {
-      const redSide = document.querySelector(".red-side");
-      const blueSide = document.querySelector(".blue-side");
-      const parent = redSide.parentNode;
-
-      // Swap positions
-      if (redSide.nextElementSibling === blueSide) {
-        parent.insertBefore(blueSide, redSide);
-      } else {
-        parent.insertBefore(redSide, blueSide);
-      }
-    }
-    // Toggle color settings visibility
-    function toggleColorSettings() {
-      document.getElementById("colorSettings").classList.toggle("show");
-    }
-
-    // Change colors dynamically
-    document.getElementById("redColorPicker").addEventListener("input", (e) => {
-      document.querySelector(".red-side").style.backgroundColor = e.target.value;
-    });
-
-    document.getElementById("blueColorPicker").addEventListener("input", (e) => {
-      document.querySelector(".blue-side").style.backgroundColor = e.target.value;
-    });
-
-    // Swap sides visually
-    function swapSides() {
-      const redSide = document.querySelector(".red-side");
-      const blueSide = document.querySelector(".blue-side");
-      const parent = redSide.parentNode;
-
-      // Swap positions
-      if (redSide.nextElementSibling === blueSide) {
-        parent.insertBefore(blueSide, redSide);
-      } else {
-        parent.insertBefore(redSide, blueSide);
-      }
-    }
-
   </script>
 </body>
-
 </html>
