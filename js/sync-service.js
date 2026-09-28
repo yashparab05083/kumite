@@ -7,7 +7,6 @@ const SyncService = {
   STORAGE_KEY: 'kumite_tournament_data_v1',
   listeners: [],
 
-  // Default initial state
   state: {
     tournamentInfo: {
       title: 'SHOTOKAN KARATE CHAMPIONSHIP',
@@ -23,12 +22,9 @@ const SyncService = {
       activeBoutId: null,
       activeMatchNumber: null,
       assignedBoutIds: [],
-      status: 'Empty' // Empty, Active, Paused
+      status: 'Empty'
     })),
-    currentUser: {
-      role: 'organizer', // organizer, tatami
-      tatamiId: null
-    }
+    currentUser: null
   },
 
   init() {
@@ -70,14 +66,12 @@ const SyncService = {
     }
   },
 
-  // Save imported participants & generated bouts
   setBoutsAndBrackets(bouts, brackets) {
     this.state.bouts = bouts;
     this.state.brackets = brackets;
     this.saveToLocal();
   },
 
-  // Assign a bout sheet to a Tatami ring
   assignBoutToTatami(tatamiId, boutId) {
     const tatami = this.state.tatamis.find(t => t.id === tatamiId);
     if (!tatami) return;
@@ -95,7 +89,6 @@ const SyncService = {
     this.saveToLocal();
   },
 
-  // Set active match on a Tatami
   setActiveTatamiMatch(tatamiId, boutId, matchNumber) {
     const tatami = this.state.tatamis.find(t => t.id === tatamiId);
     if (!tatami) return;
@@ -112,15 +105,12 @@ const SyncService = {
     this.saveToLocal();
   },
 
-  // Commit completed match result
   commitMatchResult(boutId, matchNumber, winnerSide, matchScore) {
     const bracket = this.state.brackets[boutId];
     if (!bracket) return;
 
-    // Update bracket match
     BracketEngine.updateMatchResult(bracket, matchNumber, winnerSide, matchScore);
 
-    // Check if entire bout sheet is completed
     const allMatchesDone = bracket.matches.every(m => m.status === 'Completed');
     const bout = this.state.bouts.find(b => b.id === boutId);
     if (bout) {
@@ -129,10 +119,8 @@ const SyncService = {
       }
     }
 
-    // Free up Tatami if current active match completed
     this.state.tatamis.forEach(tatami => {
       if (tatami.activeBoutId === boutId && tatami.activeMatchNumber === matchNumber) {
-        // Find next scheduled match in this bout or queue
         const nextMatch = bracket.matches.find(m => m.status === 'Scheduled');
         if (nextMatch) {
           tatami.activeMatchNumber = nextMatch.matchNumber;
@@ -147,7 +135,9 @@ const SyncService = {
     this.saveToLocal();
   },
 
-  // Update participant position manually in bracket
+  // --- BOUT & SLOT MANIPULATION HELPERS ---
+
+  // Swap 2 slots within the same bracket
   swapBracketSlots(boutId, slotIndexA, slotIndexB) {
     const bracket = this.state.brackets[boutId];
     if (!bracket) return;
@@ -156,24 +146,73 @@ const SyncService = {
     bracket.slots[slotIndexA] = bracket.slots[slotIndexB];
     bracket.slots[slotIndexB] = temp;
 
-    // Rebuild bracket round 1 matches
+    this.rebuildRound1Matches(bracket);
+    this.saveToLocal();
+  },
+
+  // Update or insert a participant in a bracket slot
+  updateSlotParticipant(boutId, slotIndex, participantData) {
+    const bracket = this.state.brackets[boutId];
+    if (!bracket) return;
+
+    if (!participantData) {
+      bracket.slots[slotIndex] = null;
+    } else {
+      const p = {
+        id: participantData.id || ('p_' + Math.random().toString(36).substr(2, 9)),
+        name: participantData.name,
+        gender: participantData.gender || bracket.gender,
+        age: participantData.age || 10,
+        belt: participantData.belt || 9,
+        beltLabel: participantData.beltLabel || 'White',
+        branch: participantData.branch || 'Dojo',
+        instructor: participantData.instructor || '',
+        schoolHours: participantData.schoolHours || false
+      };
+      bracket.slots[slotIndex] = p;
+    }
+
+    this.rebuildRound1Matches(bracket);
+    this.saveToLocal();
+  },
+
+  // Move participant from sourceBout/sourceSlot to targetBout/targetSlot
+  moveParticipantToBout(sourceBoutId, sourceSlotIdx, targetBoutId, targetSlotIdx) {
+    const sourceBracket = this.state.brackets[sourceBoutId];
+    const targetBracket = this.state.brackets[targetBoutId];
+
+    if (!sourceBracket || !targetBracket) return;
+
+    const movingParticipant = sourceBracket.slots[sourceSlotIdx];
+    const occupantTarget = targetBracket.slots[targetSlotIdx];
+
+    // Swap positions between the two bout sheets
+    sourceBracket.slots[sourceSlotIdx] = occupantTarget;
+    targetBracket.slots[targetSlotIdx] = movingParticipant;
+
+    this.rebuildRound1Matches(sourceBracket);
+    this.rebuildRound1Matches(targetBracket);
+    this.saveToLocal();
+  },
+
+  // Re-link slots to Round 1 matches (Matches 1..8)
+  rebuildRound1Matches(bracket) {
     for (let i = 0; i < 8; i++) {
       const aao = bracket.slots[i * 2];
       const aka = bracket.slots[i * 2 + 1];
       const match = bracket.matches[i];
+
+      // Only rebuild if not already completed by scoreboard fight
       if (match.status !== 'Completed') {
         match.aao = aao;
         match.aka = aka;
         match.winner = null;
         match.loser = null;
-        match.status = (aao && aka) ? 'Scheduled' : (aao || aka ? 'Completed' : 'Completed');
-        if (aao && !aka) match.winner = { ...aao };
-        if (!aao && aka) match.winner = { ...aka };
+        match.status = (aao || aka) ? 'Scheduled' : 'Empty';
       }
     }
 
     BracketEngine.propagateWinners(bracket);
-    this.saveToLocal();
   }
 };
 
