@@ -212,22 +212,98 @@ const BoutEditor = {
     container.innerHTML = html;
   },
 
-  // Export Single Active Bout Sheet as 1-Page Landscape PDF using background template
+  // Export Single Active Bout Sheet as 1-Page Landscape PDF Screenshot
   downloadBoutPDF(boutId) {
-    if (typeof PdfRenderer !== 'undefined') {
-      PdfRenderer.downloadBoutPDF(boutId);
-    } else {
-      alert('PDF Renderer module not loaded!');
-    }
+    const bracket = SyncService.state.brackets[boutId];
+    if (!bracket) return alert('No active bout sheet found!');
+
+    const tempContainer = document.createElement('div');
+    tempContainer.id = 'tempSinglePdfContainer';
+    tempContainer.style.position = 'fixed';
+    tempContainer.style.left = '0';
+    tempContainer.style.top = '0';
+    tempContainer.style.width = '1250px';
+    tempContainer.style.zIndex = '999999';
+    tempContainer.style.background = '#ffffff';
+    tempContainer.style.padding = '15px';
+    tempContainer.style.boxSizing = 'border-box';
+    document.body.appendChild(tempContainer);
+
+    tempContainer.innerHTML = this.generateBoutSheetHTML(bracket, false);
+
+    const filename = `${(bracket.boutCode || 'BOUT').toUpperCase()}_${(bracket.boutName || 'Sheet').replace(/[^a-zA-Z0-9]/g, '_')}_Sheet.pdf`;
+
+    const opt = {
+      margin:       [0.15, 0.15, 0.15, 0.15],
+      filename:     filename,
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 1250 },
+      jsPDF:        { unit: 'in', format: 'a4', orientation: 'landscape', compress: true },
+      pagebreak:    { mode: 'avoid-all' }
+    };
+
+    html2pdf().set(opt).from(tempContainer).save().then(() => {
+      if (document.getElementById('tempSinglePdfContainer')) {
+        document.body.removeChild(tempContainer);
+      }
+    }).catch(err => {
+      console.error('Single PDF Export Error:', err);
+      if (document.getElementById('tempSinglePdfContainer')) {
+        document.body.removeChild(tempContainer);
+      }
+    });
   },
 
-  // Merge ALL Tournament Bout Sheets into 1 PDF using background template
+  // Merge ALL Tournament Bout Sheets into 1 PDF (1 Landscape Page per Bout Sheet Screenshot)
   downloadAllBoutsPDF() {
-    if (typeof PdfRenderer !== 'undefined') {
-      PdfRenderer.downloadAllBoutsPDF();
-    } else {
-      alert('PDF Renderer module not loaded!');
-    }
+    const bouts = SyncService.state.bouts;
+    if (!bouts || bouts.length === 0) return alert('No bout sheets generated yet!');
+
+    const tempContainer = document.createElement('div');
+    tempContainer.id = 'tempPdfBatchContainer';
+    tempContainer.style.position = 'fixed';
+    tempContainer.style.left = '0';
+    tempContainer.style.top = '0';
+    tempContainer.style.width = '1250px';
+    tempContainer.style.zIndex = '999999';
+    tempContainer.style.background = '#ffffff';
+    tempContainer.style.padding = '15px';
+    tempContainer.style.boxSizing = 'border-box';
+    document.body.appendChild(tempContainer);
+
+    let html = '';
+    bouts.forEach((b) => {
+      const bracket = SyncService.state.brackets[b.id];
+      if (bracket) {
+        html += `
+          <div style="page-break-after: always; page-break-inside: avoid; width: 1220px; padding: 10px; margin-bottom: 20px; background: white;">
+            ${this.generateBoutSheetHTML(bracket, false)}
+          </div>
+        `;
+      }
+    });
+
+    tempContainer.innerHTML = html;
+
+    const opt = {
+      margin:       [0.15, 0.15, 0.15, 0.15],
+      filename:     `Shotokan_Championship_All_Bout_Sheets.pdf`,
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 1250 },
+      jsPDF:        { unit: 'in', format: 'a4', orientation: 'landscape', compress: true },
+      pagebreak:    { mode: ['css', 'legacy'] }
+    };
+
+    html2pdf().set(opt).from(tempContainer).save().then(() => {
+      if (document.getElementById('tempPdfBatchContainer')) {
+        document.body.removeChild(tempContainer);
+      }
+    }).catch(err => {
+      console.error('Batch PDF Export Error:', err);
+      if (document.getElementById('tempPdfBatchContainer')) {
+        document.body.removeChild(tempContainer);
+      }
+    });
   },
 
   printBoutSheet() {
