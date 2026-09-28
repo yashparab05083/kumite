@@ -215,6 +215,17 @@
       font-size: 2.5rem;
       letter-spacing: 2px;
     }
+
+    .lead-banner {
+      background: #ffc107;
+      color: #000;
+      border-radius: 10px;
+      padding: 6px 15px;
+      margin-top: 8px;
+      font-size: 1.2rem;
+      font-weight: bold;
+      box-shadow: 0 0 15px rgba(255, 193, 7, 0.8);
+    }
   </style>
 </head>
 
@@ -254,7 +265,6 @@
     <!-- 1. ORGANIZER CONTROL CENTER VIEW -->
     <div id="organizerView" class="view-pane">
       <div class="row g-4 mb-4">
-        <!-- Excel Upload Card -->
         <div class="col-md-6">
           <div class="card shadow-sm h-100 border-primary">
             <div class="card-header bg-primary text-white">
@@ -268,7 +278,6 @@
           </div>
         </div>
 
-        <!-- Tournament Overview Stats -->
         <div class="col-md-6">
           <div class="card shadow-sm h-100 border-dark">
             <div class="card-header bg-dark text-white">
@@ -287,7 +296,6 @@
         </div>
       </div>
 
-      <!-- Tatami Rings Live Assignment Grid -->
       <h4 class="fw-bold mb-3">🥋 Live Tatami Rings (1 to 8) Assignment & Status</h4>
       <div id="tatamiDashboardContainer"></div>
     </div>
@@ -394,6 +402,7 @@
       </div>
     </div>
 
+    <!-- Floating Timer Card -->
     <div class="timer-card">
       <div class="display-time" id="time">03:00</div>
       <div class="mt-2">
@@ -401,13 +410,23 @@
         <button onclick="stopTimer()" class="btn btn-danger btn-lg">Stop</button>
         <button onclick="resetTimer()" class="btn btn-secondary btn-lg">Reset</button>
       </div>
+
+      <!-- Lead Victory Warning Banner (with 10s Grace Period) -->
+      <div id="leadNoticeBanner" class="lead-banner" style="display: none;">
+        <span id="leadNoticeText">⚠️ AKA 8-Point Lead! Ending in 10s...</span>
+        <div class="d-flex justify-content-center gap-2 mt-1">
+          <button onclick="confirmLeadVictoryNow()" class="btn btn-dark btn-sm fw-bold">Confirm Win Now</button>
+          <button onclick="cancelLeadVictoryAndUndo()" class="btn btn-danger btn-sm fw-bold">Undo Error</button>
+        </div>
+      </div>
+
       <div class="d-flex gap-2 mt-2">
         <input type="number" id="minuteInput" class="form-control text-center bg-dark text-white border-warning" style="width: 70px;" min="0" value="3">
         <input type="number" id="secondInput" class="form-control text-center bg-dark text-white border-warning" style="width: 70px;" min="0" max="59" value="0">
       </div>
       <div class="mt-2 text-warning">
         <span>Lead Victory Margin: </span>
-        <select id="leadSelect" class="form-select form-select-sm d-inline-block w-auto">
+        <select id="leadSelect" class="form-select form-select-sm d-inline-block w-auto" onchange="checkVictoryMargin()">
           <option value="0">None</option>
           <option value="4">4 points</option>
           <option value="6">6 points</option>
@@ -489,6 +508,13 @@
     let redScoreHistory = [];
     let blueScoreHistory = [];
 
+    // Lead Victory 10-Second Grace Period Tracker
+    let leadVictoryTimeout = null;
+    let leadVictoryInterval = null;
+    let leadVictoryCountdown = 10;
+    let pendingLeadWinner = null;
+    let pendingLeadOption = 0;
+
     function updateScores() {
       document.getElementById("redScore").innerText = redScore;
       document.getElementById("blueScore").innerText = blueScore;
@@ -517,6 +543,7 @@
         updateScoreHistory('blue', blueScoreHistory);
       }
       updateScores();
+      checkVictoryMargin();
     }
 
     function updateScoreHistory(player, history) {
@@ -537,6 +564,7 @@
         document.getElementById(blockId).style.display = "flex";
       }
       if (penalties[player].cat1 >= 5) {
+        cancelLeadVictory();
         declareWinner(player === "red" ? "blue" : "red", "Opponent Disqualified (5 Penalties)");
       }
     }
@@ -559,6 +587,7 @@
 
     function declareWinner(winnerSide, reasonText) {
       stopTimer();
+      cancelLeadVictory();
 
       const overlay = document.getElementById("winnerOverlay");
       const image = document.getElementById("winnerImage");
@@ -583,6 +612,11 @@
     }
 
     function startTimer() {
+      // If lead victory warning is active and user hits start, check if score was corrected or user is continuing match
+      if (leadVictoryTimeout) {
+        cancelLeadVictory();
+      }
+
       if (timer) return;
       timer = setInterval(() => {
         if (timeLeft <= 0) {
@@ -612,6 +646,7 @@
 
     function resetTimer() {
       stopTimer();
+      cancelLeadVictory();
       const mins = parseInt(document.getElementById("minuteInput").value) || 3;
       const secs = parseInt(document.getElementById("secondInput").value) || 0;
       timeLeft = (mins * 60) + secs;
@@ -632,15 +667,85 @@
       document.getElementById("blueSensu").style.display = "none";
     }
 
+    // --- LEAD VICTORY WITH 10-SECOND GRACE PERIOD ---
     function checkVictoryMargin() {
       const leadOption = parseInt(document.getElementById("leadSelect").value, 10);
       if (leadOption > 0) {
-        if (redScore - blueScore >= leadOption) {
-          declareWinner("red", `Lead Victory by ${leadOption} Points`);
-        } else if (blueScore - redScore >= leadOption) {
-          declareWinner("blue", `Lead Victory by ${leadOption} Points`);
+        const diff = redScore - blueScore;
+        if (diff >= leadOption) {
+          triggerLeadVictory("red", leadOption);
+        } else if (-diff >= leadOption) {
+          triggerLeadVictory("blue", leadOption);
+        } else {
+          cancelLeadVictory();
         }
+      } else {
+        cancelLeadVictory();
       }
+    }
+
+    function triggerLeadVictory(winnerSide, leadOption) {
+      if (pendingLeadWinner === winnerSide && leadVictoryTimeout) return; // Already counting down for this winner
+
+      stopTimer(); // Pause match timer
+      pendingLeadWinner = winnerSide;
+      pendingLeadOption = leadOption;
+
+      leadVictoryCountdown = 10;
+      const banner = document.getElementById("leadNoticeBanner");
+      const text = document.getElementById("leadNoticeText");
+      const winnerName = winnerSide === 'red' ? 'AKA' : 'AAO';
+
+      text.innerText = `⚠️ ${winnerName} HAS ${leadOption}-PT LEAD! Ending match in ${leadVictoryCountdown}s...`;
+      banner.style.display = "block";
+
+      if (leadVictoryInterval) clearInterval(leadVictoryInterval);
+      leadVictoryInterval = setInterval(() => {
+        leadVictoryCountdown--;
+        if (leadVictoryCountdown > 0) {
+          text.innerText = `⚠️ ${winnerName} HAS ${leadOption}-PT LEAD! Ending match in ${leadVictoryCountdown}s...`;
+        } else {
+          clearInterval(leadVictoryInterval);
+          leadVictoryInterval = null;
+        }
+      }, 1000);
+
+      if (leadVictoryTimeout) clearTimeout(leadVictoryTimeout);
+      leadVictoryTimeout = setTimeout(() => {
+        const side = pendingLeadWinner;
+        const opt = pendingLeadOption;
+        cancelLeadVictory();
+        declareWinner(side, `Victory by Lead of ${opt} Points`);
+      }, 10000);
+    }
+
+    function confirmLeadVictoryNow() {
+      if (pendingLeadWinner) {
+        const side = pendingLeadWinner;
+        const opt = pendingLeadOption;
+        cancelLeadVictory();
+        declareWinner(side, `Victory by Lead of ${opt} Points`);
+      }
+    }
+
+    function cancelLeadVictoryAndUndo() {
+      cancelLeadVictory();
+      if (pendingLeadWinner === 'red') removeScore('red');
+      else if (pendingLeadWinner === 'blue') removeScore('blue');
+    }
+
+    function cancelLeadVictory() {
+      if (leadVictoryTimeout) {
+        clearTimeout(leadVictoryTimeout);
+        leadVictoryTimeout = null;
+      }
+      if (leadVictoryInterval) {
+        clearInterval(leadVictoryInterval);
+        leadVictoryInterval = null;
+      }
+      pendingLeadWinner = null;
+      pendingLeadOption = 0;
+      document.getElementById("leadNoticeBanner").style.display = "none";
     }
   </script>
 </body>
