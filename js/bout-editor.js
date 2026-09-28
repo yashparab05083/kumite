@@ -22,10 +22,9 @@ const BoutEditor = {
     if (!bracket || !container) return;
 
     const m = bracket.matches;
-    const slots = bracket.slots;
     const isOrganizer = AuthService.currentUser && AuthService.currentUser.role === 'organizer';
 
-    // Helper for rendering a fighter box in Round 1..4
+    // Helper for rendering a fighter box in Round 1..4 (Dojo name hidden on bout sheet)
     const renderFighterBox = (slotParticipant, label, isWinner, slotIndex) => {
       if (!slotParticipant) {
         return `
@@ -44,7 +43,6 @@ const BoutEditor = {
           <div class="text-truncate">
             <span class="badge bg-secondary me-1">${label}</span>
             <span class="fw-bold">${slotParticipant.name}</span>
-            <small class="text-muted ms-1">(${slotParticipant.branch || 'Dojo'})</small>
           </div>
           ${(isOrganizer && this.isEditMode && slotIndex !== undefined) ? `
             <button class="btn btn-xs btn-light py-0 px-1 ms-1 border fs-7" onclick="event.stopPropagation(); BoutEditor.openSlotModal('${boutId}', ${slotIndex})">⚙️</button>
@@ -60,7 +58,6 @@ const BoutEditor = {
 
       const isByeMatch = !isCompleted && ((match.aao && !match.aka) || (!match.aao && match.aka) || (!match.aao && !match.aka));
 
-      // Calculate Round 1 slot indices
       let aaoSlotIdx = undefined;
       let akaSlotIdx = undefined;
       if (roundIndex === 1) {
@@ -203,7 +200,7 @@ const BoutEditor = {
   },
 
   onMatchClick(boutId, matchNumber) {
-    if (this.isEditMode) return; // Ignore score clicks in edit mode
+    if (this.isEditMode) return;
 
     const bracket = SyncService.state.brackets[boutId];
     if (!bracket) return;
@@ -232,7 +229,6 @@ const BoutEditor = {
     }
   },
 
-  // Open Modal to Edit/Swap/Move a specific Slot
   openSlotModal(boutId, slotIndex) {
     const bracket = SyncService.state.brackets[boutId];
     if (!bracket) return;
