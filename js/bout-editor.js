@@ -217,103 +217,107 @@ const BoutEditor = {
     const bracket = SyncService.state.brackets[boutId];
     if (!bracket) return alert('No active bout sheet found!');
 
-    const prevScrollY = window.scrollY;
-    window.scrollTo(0, 0);
+    let element = document.querySelector('.bout-sheet-printable');
+    if (!element) {
+      this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
+      element = document.querySelector('.bout-sheet-printable');
+    }
 
-    const tempContainer = document.createElement('div');
-    tempContainer.id = 'tempSinglePdfContainer';
-    tempContainer.style.position = 'absolute';
-    tempContainer.style.left = '0';
-    tempContainer.style.top = '0';
-    tempContainer.style.width = '1250px';
-    tempContainer.style.zIndex = '999999';
-    tempContainer.style.background = '#ffffff';
-    tempContainer.style.padding = '15px';
-    tempContainer.style.boxSizing = 'border-box';
-    document.body.appendChild(tempContainer);
-
-    tempContainer.innerHTML = this.generateBoutSheetHTML(bracket, false);
+    if (!element) return alert('No active bout sheet diagram found to capture!');
 
     const filename = `${(bracket.boutCode || 'BOUT').toUpperCase()}_${(bracket.boutName || 'Sheet').replace(/[^a-zA-Z0-9]/g, '_')}_Sheet.pdf`;
 
-    const opt = {
-      margin:       [0.15, 0.15, 0.15, 0.15],
-      filename:     filename,
-      image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2, useCORS: true, logging: false, scrollX: 0, scrollY: 0, x: 0, y: 0, windowWidth: 1250 },
-      jsPDF:        { unit: 'in', format: 'a4', orientation: 'landscape', compress: true },
-      pagebreak:    { mode: 'avoid-all' }
-    };
-
-    html2pdf().set(opt).from(tempContainer).save().then(() => {
-      if (document.getElementById('tempSinglePdfContainer')) {
-        document.body.removeChild(tempContainer);
-      }
-      window.scrollTo(0, prevScrollY);
+    html2canvas(element, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      backgroundColor: '#ffffff'
+    }).then(canvas => {
+      const imgData = canvas.toDataURL('image/jpeg', 0.98);
+      const JS_PDF = (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF : window.jsPDF;
+      const pdf = new JS_PDF({
+        orientation: 'landscape',
+        unit: 'px',
+        format: [canvas.width, canvas.height]
+      });
+      pdf.addImage(imgData, 'JPEG', 0, 0, canvas.width, canvas.height);
+      pdf.save(filename);
     }).catch(err => {
       console.error('Single PDF Export Error:', err);
-      if (document.getElementById('tempSinglePdfContainer')) {
-        document.body.removeChild(tempContainer);
-      }
-      window.scrollTo(0, prevScrollY);
+      alert('Failed to generate single bout PDF.');
     });
   },
 
   // Merge ALL Tournament Bout Sheets into 1 PDF (1 Landscape Page per Bout Sheet Screenshot)
-  downloadAllBoutsPDF() {
+  async downloadAllBoutsPDF() {
     const bouts = SyncService.state.bouts;
     if (!bouts || bouts.length === 0) return alert('No bout sheets generated yet!');
 
-    const prevScrollY = window.scrollY;
-    window.scrollTo(0, 0);
+    const statusEl = document.getElementById('importStatus');
+    if (statusEl) statusEl.innerText = 'Generating PDF for all bout sheets... Please wait...';
 
-    const tempContainer = document.createElement('div');
-    tempContainer.id = 'tempPdfBatchContainer';
-    tempContainer.style.position = 'absolute';
-    tempContainer.style.left = '0';
-    tempContainer.style.top = '0';
-    tempContainer.style.width = '1250px';
-    tempContainer.style.zIndex = '999999';
-    tempContainer.style.background = '#ffffff';
-    tempContainer.style.padding = '15px';
-    tempContainer.style.boxSizing = 'border-box';
-    document.body.appendChild(tempContainer);
+    const container = document.getElementById('activeBoutDiagramContainer');
+    if (!container) return alert('Bout sheets diagram container not found!');
 
-    let html = '';
-    bouts.forEach((b) => {
-      const bracket = SyncService.state.brackets[b.id];
-      if (bracket) {
-        html += `
-          <div style="page-break-after: always; page-break-inside: avoid; width: 1220px; padding: 10px; margin-bottom: 20px; background: white;">
-            ${this.generateBoutSheetHTML(bracket, false)}
-          </div>
-        `;
+    const previousBoutId = this.activeBoutId;
+
+    try {
+      const JS_PDF = (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF : window.jsPDF;
+      let pdf = null;
+
+      for (let i = 0; i < bouts.length; i++) {
+        const b = bouts[i];
+        const bracket = SyncService.state.brackets[b.id];
+        if (!bracket) continue;
+
+        // Render current bout sheet into active container so browser lays out all elements & styles
+        container.innerHTML = this.generateBoutSheetHTML(bracket, false);
+        const element = container.querySelector('.bout-sheet-printable');
+        if (!element) continue;
+
+        // Small delay for DOM layout render
+        await new Promise(resolve => setTimeout(resolve, 80));
+
+        const canvas = await html2canvas(element, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          logging: false,
+          backgroundColor: '#ffffff'
+        });
+
+        const imgData = canvas.toDataURL('image/jpeg', 0.98);
+
+        if (!pdf) {
+          pdf = new JS_PDF({
+            orientation: 'landscape',
+            unit: 'px',
+            format: [canvas.width, canvas.height]
+          });
+        } else {
+          pdf.addPage([canvas.width, canvas.height], 'landscape');
+        }
+
+        pdf.addImage(imgData, 'JPEG', 0, 0, canvas.width, canvas.height);
       }
-    });
 
-    tempContainer.innerHTML = html;
-
-    const opt = {
-      margin:       [0.15, 0.15, 0.15, 0.15],
-      filename:     `Shotokan_Championship_All_Bout_Sheets.pdf`,
-      image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2, useCORS: true, logging: false, scrollX: 0, scrollY: 0, x: 0, y: 0, windowWidth: 1250 },
-      jsPDF:        { unit: 'in', format: 'a4', orientation: 'landscape', compress: true },
-      pagebreak:    { mode: ['css', 'legacy'] }
-    };
-
-    html2pdf().set(opt).from(tempContainer).save().then(() => {
-      if (document.getElementById('tempPdfBatchContainer')) {
-        document.body.removeChild(tempContainer);
+      // Restore active bout view
+      if (previousBoutId) {
+        this.renderBoutSheet(previousBoutId, 'activeBoutDiagramContainer');
       }
-      window.scrollTo(0, prevScrollY);
-    }).catch(err => {
-      console.error('Batch PDF Export Error:', err);
-      if (document.getElementById('tempPdfBatchContainer')) {
-        document.body.removeChild(tempContainer);
+
+      if (pdf) {
+        pdf.save('Shotokan_Championship_All_Bout_Sheets.pdf');
+        if (statusEl) statusEl.innerText = 'All Bout Sheets downloaded successfully in PDF!';
       }
-      window.scrollTo(0, prevScrollY);
-    });
+    } catch (err) {
+      console.error('All Bouts PDF Export Error:', err);
+      if (previousBoutId) {
+        this.renderBoutSheet(previousBoutId, 'activeBoutDiagramContainer');
+      }
+      alert('Failed to generate all bouts PDF.');
+    }
   },
 
   printBoutSheet() {
