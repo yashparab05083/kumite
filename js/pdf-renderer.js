@@ -183,56 +183,11 @@ const PdfRenderer = {
   },
 
   /**
-   * Downloads all bout sheets merged into 1 PDF using the background template format
+   * Downloads all bout sheets merged into 1 PDF using the crisp multi-page landscape renderer
    */
   downloadAllBoutsPDF() {
-    const bouts = SyncService.state.bouts;
-    if (!bouts || bouts.length === 0) {
-      alert('No bout sheets generated yet!');
-      return;
+    if (typeof BoutEditor !== 'undefined' && typeof BoutEditor.downloadAllBoutsPDF === 'function') {
+      return BoutEditor.downloadAllBoutsPDF();
     }
-
-    const container = document.createElement('div');
-    container.id = 'tempPdfBatchContainer';
-    container.style.position = 'fixed';
-    container.style.left = '0';
-    container.style.top = '0';
-    container.style.zIndex = '-99999';
-    container.style.opacity = '1';
-    container.style.visibility = 'visible';
-    container.style.pointerEvents = 'none';
-    container.style.width = '1024px';
-    container.style.backgroundColor = '#ffffff';
-    document.body.appendChild(container);
-
-    let html = '';
-    bouts.forEach(b => {
-      const bracket = SyncService.state.brackets[b.id];
-      if (bracket) {
-        html += this.generateBoutTemplateHTML(bracket);
-      }
-    });
-
-    container.innerHTML = html;
-
-    const opt = {
-      margin:       [0.1, 0.1, 0.1, 0.1],
-      filename:     `Shotokan_Championship_All_Bout_Sheets.pdf`,
-      image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2, useCORS: true, allowTaint: true, logging: false, scrollX: 0, scrollY: 0, windowWidth: 1024 },
-      jsPDF:        { unit: 'in', format: 'a4', orientation: 'landscape', compress: true },
-      pagebreak:    { mode: ['css', 'legacy'] }
-    };
-
-    html2pdf().set(opt).from(container).save().then(() => {
-      if (document.getElementById('tempPdfBatchContainer')) {
-        document.body.removeChild(container);
-      }
-    }).catch(err => {
-      console.error('Batch PDF Export Error:', err);
-      if (document.getElementById('tempPdfBatchContainer')) {
-        document.body.removeChild(container);
-      }
-    });
   }
 };
