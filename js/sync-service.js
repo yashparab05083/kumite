@@ -29,12 +29,36 @@ const SyncService = {
 
   init() {
     this.loadFromLocal();
+    
+    // Listen for tab sync on same device
     window.addEventListener('storage', (e) => {
       if (e.key === this.STORAGE_KEY) {
         this.loadFromLocal();
         this.notifyListeners();
       }
     });
+
+    // Initialize Firebase Realtime Cloud Sync across multiple laptops/devices
+    if (typeof FirebaseConfig !== 'undefined') {
+      FirebaseConfig.init();
+      if (FirebaseConfig.isInitialized && FirebaseConfig.db) {
+        try {
+          const tournamentRef = FirebaseConfig.db.ref('kumite_tournament_data_v1');
+          tournamentRef.on('value', (snapshot) => {
+            const cloudData = snapshot.val();
+            if (cloudData) {
+              this.state = { ...this.state, ...cloudData };
+              try {
+                localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
+              } catch(err) {}
+              this.notifyListeners();
+            }
+          });
+        } catch (err) {
+          console.warn('Firebase cloud sync listener error:', err);
+        }
+      }
+    }
   },
 
   subscribe(callback) {
@@ -66,6 +90,12 @@ const SyncService = {
     try {
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
       this.notifyListeners();
+
+      if (typeof FirebaseConfig !== 'undefined' && FirebaseConfig.isInitialized && FirebaseConfig.db) {
+        FirebaseConfig.db.ref('kumite_tournament_data_v1').set(this.state).catch(err => {
+          console.warn('Firebase cloud sync push error:', err);
+        });
+      }
     } catch (e) {
       console.error('Failed to save local state:', e);
     }
