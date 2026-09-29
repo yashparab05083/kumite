@@ -17,7 +17,8 @@ const TatamiManager = {
 
     tatamis.forEach(tatami => {
       const activeBout = bouts.find(b => b.id === tatami.activeBoutId);
-      const assignedBouts = bouts.filter(b => tatami.assignedBoutIds.includes(b.id));
+      const assignedIds = Array.isArray(tatami.assignedBoutIds) ? tatami.assignedBoutIds : [];
+      const assignedBouts = bouts.filter(b => assignedIds.indexOf(b.id) !== -1);
 
       html += `
         <div class="col-md-3">
@@ -60,7 +61,8 @@ const TatamiManager = {
     const tatami = SyncService.state.tatamis.find(t => t.id === tatamiId);
     if (!tatami) return;
 
-    const assignedBouts = SyncService.state.bouts.filter(b => tatami.assignedBoutIds.includes(b.id));
+    const assignedIds = Array.isArray(tatami.assignedBoutIds) ? tatami.assignedBoutIds : [];
+    const assignedBouts = SyncService.state.bouts.filter(b => assignedIds.indexOf(b.id) !== -1);
     const activeBout = SyncService.state.bouts.find(b => b.id === tatami.activeBoutId);
 
     let html = `

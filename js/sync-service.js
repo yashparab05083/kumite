@@ -68,13 +68,20 @@ const SyncService = {
   notifyListeners() {
     this.listeners.forEach(cb => cb(this.state));
   },
-
   loadFromLocal() {
     try {
       const raw = localStorage.getItem(this.STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
         this.state = { ...this.state, ...parsed };
+
+        if (this.state.tatamis && Array.isArray(this.state.tatamis)) {
+          this.state.tatamis.forEach(t => {
+            if (!t.assignedBoutIds || !Array.isArray(t.assignedBoutIds)) {
+              t.assignedBoutIds = [];
+            }
+          });
+        }
 
         // Re-evaluate bout completion statuses on load
         if (this.state.bouts) {
@@ -111,11 +118,13 @@ const SyncService = {
     const tatami = this.state.tatamis.find(t => t.id === tatamiId);
     if (!tatami) return;
 
-    if (!tatami.assignedBoutIds.includes(boutId)) {
-      tatami.assignedBoutIds.push(boutId);
+    if (!tatami.assignedBoutIds || !Array.isArray(tatami.assignedBoutIds)) {
+      tatami.assignedBoutIds = [];
     }
 
-    const bout = this.state.bouts.find(b => b.id === boutId);
+    if (tatami.assignedBoutIds.indexOf(boutId) === -1) {
+      tatami.assignedBoutIds.push(boutId);
+    }
     if (bout) {
       bout.tatamiId = tatamiId;
       if (bout.status !== 'Completed') {
