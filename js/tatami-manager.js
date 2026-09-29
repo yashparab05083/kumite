@@ -139,14 +139,32 @@ const TatamiManager = {
   },
 
   confirmAssign(tatamiId) {
-    const boutId = document.getElementById('assignBoutSelect').value;
+    const select = document.getElementById('assignBoutSelect');
+    if (!select) return;
+    const boutId = select.value;
+
     SyncService.assignBoutToTatami(tatamiId, boutId);
-    
+
     const modalEl = document.getElementById('assignBoutModal');
-    const modal = bootstrap.Modal.getInstance(modalEl);
-    modal.hide();
+    if (modalEl) {
+      const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+      if (modal) {
+        try { modal.hide(); } catch(e) {}
+      }
+    }
+
+    // Force backdrop cleanup to ensure UI is never blocked
+    setTimeout(() => {
+      document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+      document.body.classList.remove('modal-open');
+      document.body.style.removeProperty('overflow');
+      document.body.style.removeProperty('padding-right');
+    }, 150);
 
     this.renderOrganizerDashboard('tatamiDashboardContainer');
+    if (typeof renderBoutList === 'function') {
+      renderBoutList('boutSheetsListContainer');
+    }
   },
 
   loadBoutForRing(tatamiId, boutId) {

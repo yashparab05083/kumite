@@ -27,9 +27,20 @@ const SyncService = {
     currentUser: null
   },
 
+  peer: null,
+  peerConnections: [],
+  activeRoomCode: null,
+  isHost: false,
+
   init() {
     this.loadFromLocal();
     
+    // Auto-restore room code if previously connected
+    const savedRoom = localStorage.getItem('kumite_active_room_code');
+    if (savedRoom) {
+      this.initRoomSync(savedRoom, false);
+    }
+
     // Listen for tab sync on same device
     window.addEventListener('storage', (e) => {
       if (e.key === this.STORAGE_KEY) {
@@ -38,7 +49,7 @@ const SyncService = {
       }
     });
 
-    // Initialize Firebase Realtime Cloud Sync across multiple laptops/devices
+    // Firebase Cloud Sync (Only merges if valid cloud bouts exist)
     if (typeof FirebaseConfig !== 'undefined') {
       FirebaseConfig.init();
       if (FirebaseConfig.isInitialized && FirebaseConfig.db) {
@@ -46,12 +57,9 @@ const SyncService = {
           const tournamentRef = FirebaseConfig.db.ref('kumite_tournament_data_v1');
           tournamentRef.on('value', (snapshot) => {
             const cloudData = snapshot.val();
-            if (cloudData) {
+            if (cloudData && cloudData.bouts && Array.isArray(cloudData.bouts) && cloudData.bouts.length > 0) {
               this.state = { ...this.state, ...cloudData };
-              try {
-                localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
-              } catch(err) {}
-              this.notifyListeners();
+              this.saveToLocal();
             }
           });
         } catch (err) {
@@ -68,6 +76,7 @@ const SyncService = {
   notifyListeners() {
     this.listeners.forEach(cb => cb(this.state));
   },
+
   loadFromLocal() {
     try {
       const raw = localStorage.getItem(this.STORAGE_KEY);
@@ -91,7 +100,6 @@ const SyncService = {
           });
         }
 
-        // Re-evaluate bout completion statuses on load
         if (this.state.bouts) {
           this.state.bouts.forEach(b => this.checkBoutCompletion(b.id));
         }
@@ -103,8 +111,14 @@ const SyncService = {
 
   saveToLocal() {
     try {
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
+      const serialized = JSON.stringify(this.state);
+      localStorage.setItem(this.STORAGE_KEY, serialized);
+      // Secondary auto-backup snapshot safeguard
+      if (this.state.bouts && this.state.bouts.length > 0) {
+        localStorage.setItem('kumite_backup_snapshot', serialized);
+      }
       this.notifyListeners();
+      this.broadcastStateToPeers();
 
       if (typeof FirebaseConfig !== 'undefined' && FirebaseConfig.isInitialized && FirebaseConfig.db) {
         FirebaseConfig.db.ref('kumite_tournament_data_v1').set(this.state).catch(err => {
@@ -278,6 +292,221 @@ const SyncService = {
     }
 
     BracketEngine.propagateWinners(bracket);
+  },
+
+  // --- DATA BACKUP & RESTORE HELPERS ---
+
+  exportJsonBackup() {
+    if (!this.state.bouts || this.state.bouts.length === 0) {
+      return alert('No tournament data to backup!');
+    }
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(this.state, null, 2));
+    const downloadAnchor = document.createElement('a');
+    const dateStr = new Date().toISOString().split('T')[0];
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `Shotokan_Tournament_Backup_${dateStr}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  },
+
+  importJsonBackup(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const imported = JSON.parse(evt.target.result);
+        if (imported && imported.bouts && Array.isArray(imported.bouts)) {
+          this.state = { ...this.state, ...imported };
+          this.saveToLocal();
+          alert(`Successfully imported backup! ${imported.bouts.length} Bout sheets loaded.`);
+          window.location.reload();
+        } else {
+          alert('Invalid tournament backup file.');
+        }
+      } catch (err) {
+        alert('Failed to parse backup JSON file: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  },
+
+  restoreAutoBackup() {
+    const rawBackup = localStorage.getItem('kumite_backup_snapshot');
+    if (!rawBackup) {
+      return alert('No auto-backup snapshot found in browser storage.');
+    }
+    try {
+      const parsed = JSON.parse(rawBackup);
+      if (parsed && parsed.bouts && parsed.bouts.length > 0) {
+        this.state = { ...this.state, ...parsed };
+        this.saveToLocal();
+        alert(`Restored ${parsed.bouts.length} bout sheets from auto-backup snapshot!`);
+        window.location.reload();
+      } else {
+        alert('Auto-backup snapshot is empty.');
+      }
+    } catch (e) {
+      alert('Failed to restore auto-backup: ' + e.message);
+    }
+  },
+
+  // --- PEERJS REAL-TIME ROOM SYNC ---
+
+  openSyncModal() {
+    const currentRoom = this.activeRoomCode || localStorage.getItem('kumite_active_room_code') || '';
+    const isConnected = this.peer && !this.peer.destroyed;
+    const statusText = isConnected ? `Connected to Room: ${currentRoom}` : 'Disconnected / Offline';
+
+    const modalHtml = `
+      <div class="modal fade" id="syncRoomModal" tabindex="-1">
+        <div class="modal-dialog">
+          <div class="modal-content shadow-lg border-2 border-info">
+            <div class="modal-header bg-dark text-white">
+              <h5 class="modal-title fw-bold">🌐 Multi-Device Live Room Sync</h5>
+              <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+              <div class="alert alert-info py-2 small mb-3">
+                <strong>Status:</strong> <span id="modalSyncStatus">${statusText}</span>
+              </div>
+              
+              <div class="mb-4">
+                <label class="form-label fw-bold">1-Click Create Organizer Room Code:</label>
+                <div class="input-group">
+                  <input type="text" id="generatedRoomInput" class="form-control fw-bold text-primary" value="${currentRoom}" readonly placeholder="Click Create Room below">
+                  <button class="btn btn-outline-secondary" onclick="SyncService.copyRoomCode()">📋 Copy</button>
+                </div>
+                <button class="btn btn-primary w-100 fw-bold mt-2" onclick="SyncService.createHostRoom()">✨ Create New Room Code (Host)</button>
+              </div>
+
+              <hr>
+
+              <div class="mb-3">
+                <label class="form-label fw-bold">Join Existing Room (Phones / Tatami Laptops):</label>
+                <div class="input-group">
+                  <input type="text" id="joinRoomCodeInput" class="form-control text-uppercase fw-bold" placeholder="e.g. KUMITE-4821">
+                  <button class="btn btn-success fw-bold" onclick="SyncService.joinPeerRoom()">⚡ Join Room</button>
+                </div>
+                <small class="text-muted">Enter the 6-digit Room Code created by the Organizer laptop.</small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('modalContainer').innerHTML = modalHtml;
+    const modal = new bootstrap.Modal(document.getElementById('syncRoomModal'));
+    modal.show();
+  },
+
+  createHostRoom() {
+    const randomNum = Math.floor(1000 + Math.random() * 9000);
+    const roomCode = `KUMITE-${randomNum}`;
+    document.getElementById('generatedRoomInput').value = roomCode;
+    this.initRoomSync(roomCode, true);
+  },
+
+  joinPeerRoom() {
+    const input = document.getElementById('joinRoomCodeInput').value.trim().toUpperCase();
+    if (!input) return alert('Please enter a valid Room Code!');
+    this.initRoomSync(input, false);
+    const modalEl = document.getElementById('syncRoomModal');
+    if (modalEl) {
+      const modal = bootstrap.Modal.getInstance(modalEl);
+      if (modal) modal.hide();
+    }
+  },
+
+  copyRoomCode() {
+    const input = document.getElementById('generatedRoomInput');
+    if (input && input.value) {
+      navigator.clipboard.writeText(input.value);
+      alert('Room Code copied to clipboard: ' + input.value);
+    }
+  },
+
+  initRoomSync(roomCode, isHost = false) {
+    if (typeof Peer === 'undefined') return;
+
+    if (this.peer) {
+      try { this.peer.destroy(); } catch(e) {}
+    }
+
+    this.activeRoomCode = roomCode;
+    this.isHost = isHost;
+    localStorage.setItem('kumite_active_room_code', roomCode);
+
+    const peerId = isHost ? roomCode.toLowerCase() : `client-${Math.random().toString(36).substr(2, 6)}`;
+    
+    try {
+      this.peer = new Peer(peerId);
+
+      this.peer.on('open', (id) => {
+        this.updateSyncBadge(`🌐 Room: ${roomCode}`, true);
+        if (!isHost) {
+          // Connect to Host room
+          const conn = this.peer.connect(roomCode.toLowerCase());
+          this.setupConnection(conn);
+        }
+      });
+
+      this.peer.on('connection', (conn) => {
+        this.setupConnection(conn);
+        // Send state to newly connected device
+        conn.on('open', () => {
+          conn.send({ type: 'SYNC_FULL_STATE', state: this.state });
+        });
+      });
+
+      this.peer.on('error', (err) => {
+        console.warn('PeerJS Room Sync Error:', err);
+        this.updateSyncBadge('🌐 Sync: Offline', false);
+      });
+    } catch (err) {
+      console.warn('PeerJS init failed:', err);
+    }
+  },
+
+  setupConnection(conn) {
+    this.peerConnections.push(conn);
+
+    conn.on('data', (payload) => {
+      if (!payload || !payload.type) return;
+
+      if (payload.type === 'SYNC_FULL_STATE' && payload.state) {
+        if (payload.state.bouts && payload.state.bouts.length > 0) {
+          this.state = { ...this.state, ...payload.state };
+          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
+          this.notifyListeners();
+        }
+      }
+    });
+
+    conn.on('close', () => {
+      this.peerConnections = this.peerConnections.filter(c => c !== conn);
+    });
+  },
+
+  broadcastStateToPeers() {
+    if (this.peerConnections && this.peerConnections.length > 0) {
+      this.peerConnections.forEach(conn => {
+        if (conn.open) {
+          conn.send({ type: 'SYNC_FULL_STATE', state: this.state });
+        }
+      });
+    }
+  },
+
+  updateSyncBadge(text, isOnline) {
+    const badge = document.getElementById('syncBadge');
+    if (badge) {
+      badge.innerText = text;
+      badge.className = isOnline ? 'badge bg-success fs-6' : 'badge bg-secondary fs-6';
+    }
   }
 };
 
