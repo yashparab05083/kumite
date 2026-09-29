@@ -127,15 +127,28 @@ const ExcelImporter = {
     });
   },
 
-  // Derive Age Category Name (e.g. U10, U12, U14, U16, Senior)
-  getAgeCategory(age) {
-    if (age <= 8) return 'U8';
-    if (age <= 10) return 'U10';
-    if (age <= 12) return 'U12';
-    if (age <= 14) return 'U14';
-    if (age <= 16) return 'U16';
-    if (age <= 18) return 'U18';
-    return 'Senior';
+  // Derive Age Category Name based on Official Tournament Age Segregation Rules
+  getAgeCategory(ageVal) {
+    if (typeof ageVal === 'string') {
+      const str = ageVal.trim().toLowerCase();
+      if (str.includes('4') && str.includes('5')) return '4 & 5 Years';
+      if (str.includes('13') && str.includes('14')) return '13 & 14 Years';
+      if (str.includes('15') || str.includes('16') || str.includes('17')) return '15, 16 & 17 Years';
+      if (str.includes('18') || str.includes('above') || str.includes('senior')) return '18 Years & Above';
+    }
+
+    const age = parseInt(ageVal, 10);
+    if (isNaN(age) || age <= 5) return '4 & 5 Years';
+    if (age === 6) return '6 Years';
+    if (age === 7) return '7 Years';
+    if (age === 8) return '8 Years';
+    if (age === 9) return '9 Years';
+    if (age === 10) return '10 Years';
+    if (age === 11) return '11 Years';
+    if (age === 12) return '12 Years';
+    if (age === 13 || age === 14) return '13 & 14 Years';
+    if (age >= 15 && age <= 17) return '15, 16 & 17 Years';
+    return '18 Years & Above';
   },
 
   // Auto-generate Bout Groups from Participant List
@@ -181,8 +194,9 @@ const ExcelImporter = {
 
       groups.forEach((groupParticipants, gIdx) => {
         const letter = String.fromCharCode(97 + gIdx); // 'a', 'b', 'c'...
-        const boutCode = `${bin.ageCat}${letter}`.toLowerCase();
-        const boutName = `${bin.ageCat}-${bin.gender}-${bin.beltTier} Group ${letter.toUpperCase()}`;
+        const cleanAgeCatCode = bin.ageCat.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const boutCode = `${cleanAgeCatCode}_${letter}`;
+        const boutName = `${bin.ageCat} - ${bin.gender} - ${bin.beltTier} (Group ${letter.toUpperCase()})`;
 
         bouts.push({
           id: 'bout_' + Math.random().toString(36).substr(2, 9),
