@@ -23,7 +23,7 @@ body {
   border: 1px solid #dee2e6;
   border-radius: 6px;
   padding: 3px;
-  width: 136px;
+  width: 128px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
   cursor: pointer;
   transition: all 0.2s ease-in-out;
@@ -41,17 +41,17 @@ body {
 }
 
 .match-header {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   border-bottom: 1px solid #eee;
   padding-bottom: 2px;
   margin-bottom: 3px;
 }
 
 .fighter-box {
-  padding: 2px 3px;
+  padding: 2px 2px;
   margin: 2px 0;
   border-radius: 4px;
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -79,9 +79,9 @@ body {
   color: #0f5132;
 }
 
-/* Bracket Diagram Container */
+/* Bracket Diagram Container - No Scrollbar for Complete Diagram Fit */
 .bracket-diagram-container {
-  overflow-x: auto;
+  overflow: visible !important;
   padding: 5px 0;
   width: 100%;
 }
@@ -95,8 +95,9 @@ body {
   background: #ffffff;
   border: 1px solid #ccc;
   width: 100%;
-  max-width: 1024px;
+  max-width: 100%;
   margin: 0 auto;
+  overflow: visible !important;
   box-sizing: border-box;
   page-break-inside: avoid !important;
   page-break-after: always !important;

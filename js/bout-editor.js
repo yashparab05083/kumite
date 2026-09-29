@@ -231,7 +231,7 @@ const BoutEditor = {
       margin:       [0.05, 0.05, 0.05, 0.05],
       filename:     filename,
       image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2, useCORS: true, logging: false, scrollX: 0, scrollY: 0, x: 0, y: 0, width: 1024, windowWidth: 1024 },
+      html2canvas:  { scale: 2, useCORS: true, logging: false, scrollX: 0, scrollY: 0 },
       jsPDF:        { unit: 'in', format: 'a4', orientation: 'landscape', compress: true },
       pagebreak:    { mode: 'avoid-all' }
     };
@@ -255,13 +255,12 @@ const BoutEditor = {
 
     const previousBoutId = this.activeBoutId;
 
-    // Create a visible batch wrapper with 0 left margin so html2canvas starts capture at x=0 without shift
-    let html = '<div id="batchPrintWrapper" style="width: 1024px; max-width: 1024px; background: #ffffff; margin: 0; padding: 0; box-sizing: border-box;">';
+    let html = '<div id="batchPrintWrapper" style="width: 100%; background: #ffffff; margin: 0; padding: 0; box-sizing: border-box;">';
     bouts.forEach(b => {
       const bracket = SyncService.state.brackets[b.id];
       if (bracket) {
         html += `
-          <div class="bout-pdf-page" style="page-break-after: always; page-break-inside: avoid; margin-bottom: 20px; background: #ffffff; width: 1024px;">
+          <div class="bout-pdf-page" style="page-break-after: always; page-break-inside: avoid; margin-bottom: 20px; background: #ffffff; width: 100%;">
             ${this.generateBoutSheetHTML(bracket, false)}
           </div>
         `;
@@ -278,7 +277,7 @@ const BoutEditor = {
       margin:       [0.05, 0.05, 0.05, 0.05],
       filename:     `Shotokan_Championship_All_Bout_Sheets.pdf`,
       image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2, useCORS: true, logging: false, scrollX: 0, scrollY: 0, x: 0, y: 0, width: 1024, windowWidth: 1024 },
+      html2canvas:  { scale: 2, useCORS: true, logging: false, scrollX: 0, scrollY: 0 },
       jsPDF:        { unit: 'in', format: 'a4', orientation: 'landscape', compress: true },
       pagebreak:    { mode: ['css', 'legacy'] }
     };
