@@ -22,8 +22,8 @@ body {
   background: #ffffff;
   border: 1px solid #dee2e6;
   border-radius: 6px;
-  padding: 4px;
-  width: 155px;
+  padding: 3px;
+  width: 136px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
   cursor: pointer;
   transition: all 0.2s ease-in-out;
@@ -41,17 +41,17 @@ body {
 }
 
 .match-header {
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   border-bottom: 1px solid #eee;
   padding-bottom: 2px;
   margin-bottom: 3px;
 }
 
 .fighter-box {
-  padding: 2px 4px;
+  padding: 2px 3px;
   margin: 2px 0;
   border-radius: 4px;
-  font-size: 0.78rem;
+  font-size: 0.74rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -95,7 +95,7 @@ body {
   background: #ffffff;
   border: 1px solid #ccc;
   width: 100%;
-  max-width: 1250px;
+  max-width: 1060px;
   margin: 0 auto;
   box-sizing: border-box;
   page-break-inside: avoid !important;

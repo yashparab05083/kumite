@@ -122,9 +122,9 @@ const BoutEditor = {
           </div>
 
           <!-- CENTER CIRCLE (FINAL MATCH 15) -->
-          <div class="bracket-center-circle text-center mx-2 my-auto p-3 rounded-circle border border-3 border-danger shadow-sm" style="width: 190px; height: 190px; display: flex; flex-direction: column; justify-content: center; background: #fff8f8;">
-            <h6 class="fw-bold text-danger mb-1">FINAL</h6>
-            <small class="text-muted fs-7">Center Ring</small>
+          <div class="bracket-center-circle text-center mx-1 my-auto p-2 rounded-circle border border-3 border-danger shadow-sm" style="width: 165px; height: 165px; display: flex; flex-direction: column; justify-content: center; background: #fff8f8;">
+            <h6 class="fw-bold text-danger mb-0 fs-6">FINAL</h6>
+            <small class="text-muted" style="font-size: 0.7rem;">Center Ring</small>
             <div class="mt-1">
               ${renderMatchCard(m[14], 4)}
             </div>
@@ -228,10 +228,10 @@ const BoutEditor = {
     const filename = `${(bracket.boutCode || 'BOUT').toUpperCase()}_${(bracket.boutName || 'Sheet').replace(/[^a-zA-Z0-9]/g, '_')}_Sheet.pdf`;
 
     const opt = {
-      margin:       [0.1, 0.1, 0.1, 0.1],
+      margin:       [0.08, 0.08, 0.08, 0.08],
       filename:     filename,
       image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2, useCORS: true, logging: false },
+      html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 1080 },
       jsPDF:        { unit: 'in', format: 'a4', orientation: 'landscape', compress: true },
       pagebreak:    { mode: 'avoid-all' }
     };
@@ -256,7 +256,7 @@ const BoutEditor = {
     const previousBoutId = this.activeBoutId;
 
     // Create a visible batch wrapper inside container so all elements & styles are laid out by browser
-    let html = '<div id="batchPrintWrapper" style="width: 1150px; background: #ffffff; margin: 0 auto; padding: 10px;">';
+    let html = '<div id="batchPrintWrapper" style="width: 1060px; max-width: 1060px; background: #ffffff; margin: 0 auto; padding: 5px;">';
     bouts.forEach(b => {
       const bracket = SyncService.state.brackets[b.id];
       if (bracket) {
@@ -275,10 +275,10 @@ const BoutEditor = {
     if (!batchWrapper) return alert('Failed to create batch print wrapper!');
 
     const opt = {
-      margin:       [0.1, 0.1, 0.1, 0.1],
+      margin:       [0.08, 0.08, 0.08, 0.08],
       filename:     `Shotokan_Championship_All_Bout_Sheets.pdf`,
       image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2, useCORS: true, logging: false },
+      html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 1080 },
       jsPDF:        { unit: 'in', format: 'a4', orientation: 'landscape', compress: true },
       pagebreak:    { mode: ['css', 'legacy'] }
     };
