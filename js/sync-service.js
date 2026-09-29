@@ -353,6 +353,26 @@ const SyncService = {
     }
   },
 
+  clearAllData() {
+    if (confirm('Are you sure you want to erase all current tournament data and reset?')) {
+      this.state.participants = [];
+      this.state.bouts = [];
+      this.state.brackets = {};
+      this.state.tatamis.forEach(t => {
+        t.activeBoutId = null;
+        t.activeMatchNumber = null;
+        t.assignedBoutIds = [];
+        t.status = 'Empty';
+      });
+      localStorage.removeItem(this.STORAGE_KEY);
+      localStorage.removeItem('kumite_backup_snapshot');
+      this.notifyListeners();
+      this.broadcastStateToPeers();
+      alert('All tournament data has been cleared!');
+      window.location.reload();
+    }
+  },
+
   // --- PEERJS REAL-TIME ROOM SYNC ---
 
   openSyncModal() {
@@ -392,6 +412,9 @@ const SyncService = {
                 </div>
                 <small class="text-muted">Enter the 6-digit Room Code created by the Organizer laptop.</small>
               </div>
+
+              <hr>
+              <button class="btn btn-outline-danger btn-sm w-100 fw-bold" onclick="SyncService.clearAllData()">🗑️ Reset / Erase Local Tournament Data</button>
             </div>
           </div>
         </div>
@@ -440,7 +463,8 @@ const SyncService = {
     this.isHost = isHost;
     localStorage.setItem('kumite_active_room_code', roomCode);
 
-    const peerId = isHost ? roomCode.toLowerCase() : `client-${Math.random().toString(36).substr(2, 6)}`;
+    const safeRoomId = roomCode.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const peerId = isHost ? `host-${safeRoomId}` : `client-${safeRoomId}-${Math.random().toString(36).substr(2, 5)}`;
     
     try {
       this.peer = new Peer(peerId);
@@ -449,16 +473,19 @@ const SyncService = {
         this.updateSyncBadge(`🌐 Room: ${roomCode}`, true);
         if (!isHost) {
           // Connect to Host room
-          const conn = this.peer.connect(roomCode.toLowerCase());
+          const conn = this.peer.connect(`host-${safeRoomId}`);
           this.setupConnection(conn);
         }
       });
 
       this.peer.on('connection', (conn) => {
         this.setupConnection(conn);
-        // Send state to newly connected device
         conn.on('open', () => {
-          conn.send({ type: 'SYNC_FULL_STATE', state: this.state });
+          if (this.state.bouts && this.state.bouts.length > 0) {
+            conn.send({ type: 'SYNC_FULL_STATE', state: this.state });
+          } else {
+            conn.send({ type: 'REQUEST_LATEST_STATE' });
+          }
         });
       });
 
@@ -472,7 +499,17 @@ const SyncService = {
   },
 
   setupConnection(conn) {
-    this.peerConnections.push(conn);
+    if (this.peerConnections.indexOf(conn) === -1) {
+      this.peerConnections.push(conn);
+    }
+
+    conn.on('open', () => {
+      if (this.state.bouts && this.state.bouts.length > 0) {
+        conn.send({ type: 'SYNC_FULL_STATE', state: this.state });
+      } else {
+        conn.send({ type: 'REQUEST_LATEST_STATE' });
+      }
+    });
 
     conn.on('data', (payload) => {
       if (!payload || !payload.type) return;
@@ -482,6 +519,10 @@ const SyncService = {
           this.state = { ...this.state, ...payload.state };
           localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
           this.notifyListeners();
+        }
+      } else if (payload.type === 'REQUEST_LATEST_STATE') {
+        if (this.state.bouts && this.state.bouts.length > 0) {
+          conn.send({ type: 'SYNC_FULL_STATE', state: this.state });
         }
       }
     });
@@ -494,7 +535,7 @@ const SyncService = {
   broadcastStateToPeers() {
     if (this.peerConnections && this.peerConnections.length > 0) {
       this.peerConnections.forEach(conn => {
-        if (conn.open) {
+        if (conn && conn.open) {
           conn.send({ type: 'SYNC_FULL_STATE', state: this.state });
         }
       });
