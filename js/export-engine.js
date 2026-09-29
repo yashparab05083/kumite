@@ -19,20 +19,21 @@ const ExportEngine = {
     bouts.forEach(b => {
       const br = brackets[b.id];
       if (br) {
+        const medals = br.medals || {};
         medalRows.push({
           'Bout Code': b.boutCode,
           'Category Name': b.boutName,
           'Age Category': b.ageCategory,
           'Gender': b.gender,
           'Belt Tier': b.beltTier,
-          'Gold (1st)': br.medals.gold ? br.medals.gold.name : 'Pending',
-          'Gold Dojo': br.medals.gold ? br.medals.gold.branch : '',
-          'Silver (2nd)': br.medals.silver ? br.medals.silver.name : 'Pending',
-          'Silver Dojo': br.medals.silver ? br.medals.silver.branch : '',
-          'Bronze 1 (3rd)': br.medals.bronze1 ? br.medals.bronze1.name : 'Pending',
-          'Bronze 1 Dojo': br.medals.bronze1 ? br.medals.bronze1.branch : '',
-          'Bronze 2 (3rd)': br.medals.bronze2 ? br.medals.bronze2.name : 'Pending',
-          'Bronze 2 Dojo': br.medals.bronze2 ? br.medals.bronze2.branch : ''
+          'Gold (1st)': medals.gold ? medals.gold.name : 'Pending',
+          'Gold Dojo': medals.gold ? medals.gold.branch : '',
+          'Silver (2nd)': medals.silver ? medals.silver.name : 'Pending',
+          'Silver Dojo': medals.silver ? medals.silver.branch : '',
+          'Bronze 1 (3rd)': medals.bronze1 ? medals.bronze1.name : 'Pending',
+          'Bronze 1 Dojo': medals.bronze1 ? medals.bronze1.branch : '',
+          'Bronze 2 (3rd)': medals.bronze2 ? medals.bronze2.name : 'Pending',
+          'Bronze 2 Dojo': medals.bronze2 ? medals.bronze2.branch : ''
         });
       }
     });
@@ -91,10 +92,11 @@ const ExportEngine = {
       });
 
       // Attach Medals
-      if (br.medals.gold && statsMap[br.medals.gold.id]) statsMap[br.medals.gold.id]['Medal'] = 'Gold';
-      if (br.medals.silver && statsMap[br.medals.silver.id]) statsMap[br.medals.silver.id]['Medal'] = 'Silver';
-      if (br.medals.bronze1 && statsMap[br.medals.bronze1.id]) statsMap[br.medals.bronze1.id]['Medal'] = 'Bronze';
-      if (br.medals.bronze2 && statsMap[br.medals.bronze2.id]) statsMap[br.medals.bronze2.id]['Medal'] = 'Bronze';
+      const medals = br.medals || {};
+      if (medals.gold && statsMap[medals.gold.id]) statsMap[medals.gold.id]['Medal'] = 'Gold';
+      if (medals.silver && statsMap[medals.silver.id]) statsMap[medals.silver.id]['Medal'] = 'Silver';
+      if (medals.bronze1 && statsMap[medals.bronze1.id]) statsMap[medals.bronze1.id]['Medal'] = 'Bronze';
+      if (medals.bronze2 && statsMap[medals.bronze2.id]) statsMap[medals.bronze2.id]['Medal'] = 'Bronze';
     });
 
     const participantSheet = XLSX.utils.json_to_sheet(Object.values(statsMap));

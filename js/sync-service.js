@@ -83,6 +83,14 @@ const SyncService = {
           });
         }
 
+        if (this.state.brackets && typeof this.state.brackets === 'object') {
+          Object.values(this.state.brackets).forEach(br => {
+            if (br && (!br.medals || typeof br.medals !== 'object')) {
+              br.medals = { gold: null, silver: null, bronze1: null, bronze2: null };
+            }
+          });
+        }
+
         // Re-evaluate bout completion statuses on load
         if (this.state.bouts) {
           this.state.bouts.forEach(b => this.checkBoutCompletion(b.id));

@@ -157,13 +157,22 @@ const BoutEditor = {
         </div>
 
         <!-- MEDALS & REFEREES FOOTER -->
-        <div class="border-top mt-2 pt-2">
-          <div class="row text-center fw-bold fs-6 mb-2">
-            <div class="col-3 text-warning">🥇 GOLD: <span class="text-dark">${bracket.medals.gold ? bracket.medals.gold.name : '_______'}</span></div>
-            <div class="col-3 text-secondary">🥈 SILVER: <span class="text-dark">${bracket.medals.silver ? bracket.medals.silver.name : '_______'}</span></div>
-            <div class="col-3 text-danger">🥉 BRONZE 1: <span class="text-dark">${bracket.medals.bronze1 ? bracket.medals.bronze1.name : '_______'}</span></div>
-            <div class="col-3 text-danger">🥉 BRONZE 2: <span class="text-dark">${bracket.medals.bronze2 ? bracket.medals.bronze2.name : '_______'}</span></div>
-          </div>
+        ${(() => {
+          const medals = bracket.medals || {};
+          const goldName = medals.gold ? medals.gold.name : '_______';
+          const silverName = medals.silver ? medals.silver.name : '_______';
+          const bronze1Name = medals.bronze1 ? medals.bronze1.name : '_______';
+          const bronze2Name = medals.bronze2 ? medals.bronze2.name : '_______';
+          return `
+            <div class="border-top mt-2 pt-2">
+              <div class="row text-center fw-bold fs-6 mb-2">
+                <div class="col-3 text-warning">🥇 GOLD: <span class="text-dark">${goldName}</span></div>
+                <div class="col-3 text-secondary">🥈 SILVER: <span class="text-dark">${silverName}</span></div>
+                <div class="col-3 text-danger">🥉 BRONZE 1: <span class="text-dark">${bronze1Name}</span></div>
+                <div class="col-3 text-danger">🥉 BRONZE 2: <span class="text-dark">${bronze2Name}</span></div>
+              </div>
+          `;
+        })()}
           <div class="d-flex justify-content-between text-muted fs-7 border-top pt-1">
             <span>Referee 1: ____________</span>
             <span>Referee 2: ____________</span>
