@@ -32,12 +32,12 @@ const BoutEditor = {
       const winnerClass = isWinner ? 'winner-highlight' : '';
       return `
         <div class="fighter-box ${label.toLowerCase()} ${winnerClass} d-flex justify-content-between align-items-center">
-          <div class="text-truncate">
-            <span class="badge bg-secondary me-1">${label}</span>
-            <span class="fw-bold">${slotParticipant.name}</span>
+          <div class="fighter-name-container flex-grow-1">
+            <span class="badge bg-secondary me-1 align-middle">${label}</span>
+            <span class="fw-bold align-middle">${slotParticipant.name}</span>
           </div>
           ${(isOrganizer && this.isEditMode && slotIndex !== undefined) ? `
-            <button class="btn btn-xs btn-light py-0 px-1 ms-1 border fs-7 print-hide" onclick="event.stopPropagation(); BoutEditor.openSlotModal('${bracket.boutId}', ${slotIndex})">⚙️</button>
+            <button class="btn btn-xs btn-light py-0 px-1 ms-1 border fs-7 print-hide flex-shrink-0" onclick="event.stopPropagation(); BoutEditor.openSlotModal('${bracket.boutId}', ${slotIndex})">⚙️</button>
           ` : ''}
         </div>
       `;
