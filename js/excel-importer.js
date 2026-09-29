@@ -5,7 +5,7 @@
 const ExcelImporter = {
   // Normalize belt values to integer Kyu (9 to 1) or Dan (-1 to -9)
   parseBelt(beltValue) {
-    if (beltValue === undefined || beltValue === null) return 9; // Default White
+    if (beltValue === undefined || beltValue === null) return 9;
     const str = String(beltValue).trim().toLowerCase();
     
     // Numeric check
@@ -14,31 +14,33 @@ const ExcelImporter = {
       return num;
     }
 
+    const has = (term) => str.indexOf(term) !== -1;
+
     // String name mappings
-    if (str.includes('white') || str.includes('kyu 9') || str.includes('9th kyu')) return 9;
-    if (str.includes('orange') || str.includes('kyu 8') || str.includes('8th kyu')) return 8;
-    if (str.includes('yellow') || str.includes('kyu 7') || str.includes('7th kyu')) return 7;
-    if (str.includes('green') || str.includes('kyu 6') || str.includes('6th kyu')) return 6;
-    if (str.includes('blue') || str.includes('kyu 5') || str.includes('5th kyu')) return 5;
-    if (str.includes('purple') || str.includes('kyu 4') || str.includes('4th kyu')) return 4;
-    if (str.includes('brown 3') || str.includes('3rd brown') || str.includes('kyu 3')) return 3;
-    if (str.includes('brown 2') || str.includes('2nd brown') || str.includes('kyu 2')) return 2;
-    if (str.includes('brown 1') || str.includes('1st brown') || str.includes('kyu 1')) return 1;
-    if (str.includes('brown')) return 2; // Generic brown fallback
+    if (has('white') || has('kyu 9') || has('9th kyu')) return 9;
+    if (has('orange') || has('kyu 8') || has('8th kyu')) return 8;
+    if (has('yellow') || has('kyu 7') || has('7th kyu')) return 7;
+    if (has('green') || has('kyu 6') || has('6th kyu')) return 6;
+    if (has('blue') || has('kyu 5') || has('5th kyu')) return 5;
+    if (has('purple') || has('kyu 4') || has('4th kyu')) return 4;
+    if (has('brown 3') || has('3rd brown') || has('kyu 3')) return 3;
+    if (has('brown 2') || has('2nd brown') || has('kyu 2')) return 2;
+    if (has('brown 1') || has('1st brown') || has('kyu 1')) return 1;
+    if (has('brown')) return 2;
     
     // Dan ranks (-1 to -9)
-    if (str.includes('shodan') || str.includes('1st dan') || str.includes('black 1')) return -1;
-    if (str.includes('nidan') || str.includes('2nd dan') || str.includes('black 2')) return -2;
-    if (str.includes('sandan') || str.includes('3rd dan') || str.includes('black 3')) return -3;
-    if (str.includes('yondan') || str.includes('4th dan') || str.includes('black 4')) return -4;
-    if (str.includes('godan') || str.includes('5th dan') || str.includes('black 5')) return -5;
-    if (str.includes('rokudan') || str.includes('6th dan') || str.includes('black 6')) return -6;
-    if (str.includes('nanadan') || str.includes('7th dan') || str.includes('black 7')) return -7;
-    if (str.includes('hachidan') || str.includes('8th dan') || str.includes('black 8')) return -8;
-    if (str.includes('kudan') || str.includes('9th dan') || str.includes('black 9')) return -9;
-    if (str.includes('black')) return -1; // Generic black fallback
+    if (has('shodan') || has('1st dan') || has('black 1')) return -1;
+    if (has('nidan') || has('2nd dan') || has('black 2')) return -2;
+    if (has('sandan') || has('3rd dan') || has('black 3')) return -3;
+    if (has('yondan') || has('4th dan') || has('black 4')) return -4;
+    if (has('godan') || has('5th dan') || has('black 5')) return -5;
+    if (has('rokudan') || has('6th dan') || has('black 6')) return -6;
+    if (has('nanadan') || has('7th dan') || has('black 7')) return -7;
+    if (has('hachidan') || has('8th dan') || has('black 8')) return -8;
+    if (has('kudan') || has('9th dan') || has('black 9')) return -9;
+    if (has('black')) return -1;
 
-    return 9; // Default fallback
+    return 9;
   },
 
   getBeltLabel(beltCode) {
@@ -80,7 +82,7 @@ const ExcelImporter = {
         try {
           const data = new Uint8Array(e.target.result);
           const workbook = XLSX.read(data, { type: 'array' });
-          if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+          if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
             throw new Error('Excel file contains no readable sheets.');
           }
 
@@ -88,7 +90,7 @@ const ExcelImporter = {
           const worksheet = workbook.Sheets[firstSheetName];
           const jsonRows = XLSX.utils.sheet_to_json(worksheet, { defval: '', raw: false });
 
-          if (!jsonRows || jsonRows.length === 0) {
+          if (!jsonRows || !Array.isArray(jsonRows) || jsonRows.length === 0) {
             throw new Error('No data rows found in Excel sheet.');
           }
 
@@ -100,31 +102,42 @@ const ExcelImporter = {
             if (keys.length === 0) return;
 
             const findVal = (terms) => {
+              if (!terms || !Array.isArray(terms)) return '';
               const matchedKey = keys.find(k => {
+                if (k === undefined || k === null) return false;
                 const kLower = String(k).toLowerCase();
-                return terms.some(t => kLower.includes(t.toLowerCase()));
+                return terms.some(t => {
+                  if (t === undefined || t === null) return false;
+                  return kLower.indexOf(String(t).toLowerCase()) !== -1;
+                });
               });
               return matchedKey ? row[matchedKey] : '';
             };
 
             const rawName = findVal(['name', 'participant', 'athlete', 'student', 'competitor', 'player', 'fullname']);
-            const name = String(rawName).trim();
+            const name = (rawName !== undefined && rawName !== null) ? String(rawName).trim() : '';
             if (!name) return; // Skip empty rows without participant names
 
-            const genderRaw = String(findVal(['gender', 'sex', 'm/f', 'g'])).trim().toLowerCase();
-            const gender = (genderRaw.startsWith('f') || genderRaw === 'g' || genderRaw.includes('female') || genderRaw === 'girl') ? 'Female' : 'Male';
+            const genderVal = (findVal(['gender', 'sex', 'm/f', 'g']) || '').toString().trim().toLowerCase();
+            const gender = (genderVal.startsWith('f') || genderVal === 'g' || genderVal.indexOf('female') !== -1 || genderVal === 'girl') ? 'Female' : 'Male';
 
             const rawAge = findVal(['age', 'years', 'yr', 'group', 'category', 'cat']);
             const ageCategory = this.getAgeCategory(rawAge);
-            const ageNum = parseInt(String(rawAge).replace(/[^0-9]/g, ''), 10);
+            const ageStr = (rawAge !== undefined && rawAge !== null) ? String(rawAge).replace(/[^0-9]/g, '') : '';
+            const ageNum = parseInt(ageStr, 10);
             const age = isNaN(ageNum) ? 10 : ageNum;
 
             const beltRaw = findVal(['belt', 'kyu', 'dan', 'grade', 'rank']);
             const belt = this.parseBelt(beltRaw);
-            const branch = String(findVal(['branch', 'dojo', 'club', 'school', 'academy', 'team']) || 'Main Branch').trim();
-            const instructor = String(findVal(['instructor', 'sensei', 'coach', 'master', 'teacher']) || '').trim();
-            const schoolHoursRaw = String(findVal(['school hours', 'school hour', 'school', 'sh', 'hours'])).trim().toLowerCase();
-            const schoolHours = schoolHoursRaw.startsWith('y') || schoolHoursRaw === 'true' || schoolHoursRaw === '1' || schoolHoursRaw.includes('yes');
+            
+            const rawBranch = findVal(['branch', 'dojo', 'club', 'school', 'academy', 'team']);
+            const branch = (rawBranch !== undefined && rawBranch !== null && String(rawBranch).trim() !== '') ? String(rawBranch).trim() : 'Main Branch';
+            
+            const rawInstructor = findVal(['instructor', 'sensei', 'coach', 'master', 'teacher']);
+            const instructor = (rawInstructor !== undefined && rawInstructor !== null) ? String(rawInstructor).trim() : '';
+
+            const schoolHoursVal = (findVal(['school hours', 'school hour', 'school', 'sh', 'hours']) || '').toString().trim().toLowerCase();
+            const schoolHours = schoolHoursVal.startsWith('y') || schoolHoursVal === 'true' || schoolHoursVal === '1' || schoolHoursVal.indexOf('yes') !== -1;
 
             participants.push({
               id: 'p_' + Math.random().toString(36).substr(2, 9),
@@ -161,15 +174,17 @@ const ExcelImporter = {
     if (ageVal === undefined || ageVal === null || ageVal === '') return '4 & 5 Years';
 
     const str = String(ageVal).trim().toLowerCase();
+    const hasStr = (substr) => str.indexOf(substr) !== -1;
 
     // Check string matchers first
-    if ((str.includes('4') && str.includes('5')) || str.includes('4&5') || str.includes('4-5') || str.includes('4,5')) return '4 & 5 Years';
-    if ((str.includes('13') && str.includes('14')) || str.includes('13&14') || str.includes('13-14') || str.includes('13,14')) return '13 & 14 Years';
-    if (str.includes('15') || str.includes('16') || str.includes('17')) return '15, 16 & 17 Years';
-    if (str.includes('18') || str.includes('above') || str.includes('senior') || str.includes('+') || str.includes('adult')) return '18 Years & Above';
+    if ((hasStr('4') && hasStr('5')) || hasStr('4&5') || hasStr('4-5') || hasStr('4,5')) return '4 & 5 Years';
+    if ((hasStr('13') && hasStr('14')) || hasStr('13&14') || hasStr('13-14') || hasStr('13,14')) return '13 & 14 Years';
+    if (hasStr('15') || hasStr('16') || hasStr('17')) return '15, 16 & 17 Years';
+    if (hasStr('18') || hasStr('above') || hasStr('senior') || hasStr('+') || hasStr('adult')) return '18 Years & Above';
 
     // Parse numeric age
-    const ageNum = parseInt(str.replace(/[^0-9]/g, ''), 10);
+    const cleanNumStr = str.replace(/[^0-9]/g, '');
+    const ageNum = parseInt(cleanNumStr, 10);
     if (isNaN(ageNum) || ageNum <= 5) return '4 & 5 Years';
     if (ageNum === 6) return '6 Years';
     if (ageNum === 7) return '7 Years';
@@ -188,7 +203,7 @@ const ExcelImporter = {
     const categoryBins = {};
 
     participants.forEach(p => {
-      const ageCat = this.getAgeCategory(p.age);
+      const ageCat = this.getAgeCategory(p.ageCategory || p.age);
       const key = `${ageCat}_${p.gender}_${p.beltTier}`;
       if (!categoryBins[key]) {
         categoryBins[key] = {
