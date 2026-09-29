@@ -80,45 +80,74 @@ const ExcelImporter = {
         try {
           const data = new Uint8Array(e.target.result);
           const workbook = XLSX.read(data, { type: 'array' });
+          if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+            throw new Error('Excel file contains no readable sheets.');
+          }
+
           const firstSheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[firstSheetName];
-          const jsonRows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+          const jsonRows = XLSX.utils.sheet_to_json(worksheet, { defval: '', raw: false });
 
-          const participants = jsonRows.map((row, index) => {
+          if (!jsonRows || jsonRows.length === 0) {
+            throw new Error('No data rows found in Excel sheet.');
+          }
+
+          const participants = [];
+
+          jsonRows.forEach((row, index) => {
+            if (!row || typeof row !== 'object') return;
             const keys = Object.keys(row);
+            if (keys.length === 0) return;
+
             const findVal = (terms) => {
-              const matchedKey = keys.find(k => terms.some(t => k.toLowerCase().includes(t.toLowerCase())));
+              const matchedKey = keys.find(k => {
+                const kLower = String(k).toLowerCase();
+                return terms.some(t => kLower.includes(t.toLowerCase()));
+              });
               return matchedKey ? row[matchedKey] : '';
             };
 
-            const name = findVal(['name', 'participant', 'athlete', 'student']) || `Participant ${index + 1}`;
-            const genderRaw = findVal(['gender', 'sex', 'm/f']) || 'Male';
-            const gender = String(genderRaw).trim().toLowerCase().startsWith('f') ? 'Female' : 'Male';
-            const ageRaw = parseInt(findVal(['age', 'years']), 10);
-            const age = isNaN(ageRaw) ? 10 : ageRaw;
-            const beltRaw = findVal(['belt', 'kyu', 'dan', 'grade']);
-            const belt = this.parseBelt(beltRaw);
-            const branch = String(findVal(['branch', 'dojo', 'club', 'school']) || 'Main Branch').trim();
-            const instructor = String(findVal(['instructor', 'sensei', 'coach']) || '').trim();
-            const schoolHoursRaw = String(findVal(['school hours', 'school hour', 'school', 'sh'])).trim().toLowerCase();
-            const schoolHours = schoolHoursRaw.startsWith('y') || schoolHoursRaw === 'true' || schoolHoursRaw === '1';
+            const rawName = findVal(['name', 'participant', 'athlete', 'student', 'competitor', 'player', 'fullname']);
+            const name = String(rawName).trim();
+            if (!name) return; // Skip empty rows without participant names
 
-            return {
+            const genderRaw = String(findVal(['gender', 'sex', 'm/f', 'g'])).trim().toLowerCase();
+            const gender = (genderRaw.startsWith('f') || genderRaw === 'g' || genderRaw.includes('female') || genderRaw === 'girl') ? 'Female' : 'Male';
+
+            const rawAge = findVal(['age', 'years', 'yr', 'group', 'category', 'cat']);
+            const ageCategory = this.getAgeCategory(rawAge);
+            const ageNum = parseInt(String(rawAge).replace(/[^0-9]/g, ''), 10);
+            const age = isNaN(ageNum) ? 10 : ageNum;
+
+            const beltRaw = findVal(['belt', 'kyu', 'dan', 'grade', 'rank']);
+            const belt = this.parseBelt(beltRaw);
+            const branch = String(findVal(['branch', 'dojo', 'club', 'school', 'academy', 'team']) || 'Main Branch').trim();
+            const instructor = String(findVal(['instructor', 'sensei', 'coach', 'master', 'teacher']) || '').trim();
+            const schoolHoursRaw = String(findVal(['school hours', 'school hour', 'school', 'sh', 'hours'])).trim().toLowerCase();
+            const schoolHours = schoolHoursRaw.startsWith('y') || schoolHoursRaw === 'true' || schoolHoursRaw === '1' || schoolHoursRaw.includes('yes');
+
+            participants.push({
               id: 'p_' + Math.random().toString(36).substr(2, 9),
               name,
               gender,
               age,
+              ageCategory,
               belt,
               beltLabel: this.getBeltLabel(belt),
               beltTier: this.getBeltTier(belt),
               branch,
               instructor,
               schoolHours
-            };
+            });
           });
+
+          if (participants.length === 0) {
+            throw new Error('No valid participant entries found in Excel file. Please ensure columns include Name, Age, Gender, and Belt.');
+          }
 
           resolve(participants);
         } catch (err) {
+          console.error('Excel Import Parse Error:', err);
           reject(err);
         }
       };
@@ -129,25 +158,28 @@ const ExcelImporter = {
 
   // Derive Age Category Name based on Official Tournament Age Segregation Rules
   getAgeCategory(ageVal) {
-    if (typeof ageVal === 'string') {
-      const str = ageVal.trim().toLowerCase();
-      if (str.includes('4') && str.includes('5')) return '4 & 5 Years';
-      if (str.includes('13') && str.includes('14')) return '13 & 14 Years';
-      if (str.includes('15') || str.includes('16') || str.includes('17')) return '15, 16 & 17 Years';
-      if (str.includes('18') || str.includes('above') || str.includes('senior')) return '18 Years & Above';
-    }
+    if (ageVal === undefined || ageVal === null || ageVal === '') return '4 & 5 Years';
 
-    const age = parseInt(ageVal, 10);
-    if (isNaN(age) || age <= 5) return '4 & 5 Years';
-    if (age === 6) return '6 Years';
-    if (age === 7) return '7 Years';
-    if (age === 8) return '8 Years';
-    if (age === 9) return '9 Years';
-    if (age === 10) return '10 Years';
-    if (age === 11) return '11 Years';
-    if (age === 12) return '12 Years';
-    if (age === 13 || age === 14) return '13 & 14 Years';
-    if (age >= 15 && age <= 17) return '15, 16 & 17 Years';
+    const str = String(ageVal).trim().toLowerCase();
+
+    // Check string matchers first
+    if ((str.includes('4') && str.includes('5')) || str.includes('4&5') || str.includes('4-5') || str.includes('4,5')) return '4 & 5 Years';
+    if ((str.includes('13') && str.includes('14')) || str.includes('13&14') || str.includes('13-14') || str.includes('13,14')) return '13 & 14 Years';
+    if (str.includes('15') || str.includes('16') || str.includes('17')) return '15, 16 & 17 Years';
+    if (str.includes('18') || str.includes('above') || str.includes('senior') || str.includes('+') || str.includes('adult')) return '18 Years & Above';
+
+    // Parse numeric age
+    const ageNum = parseInt(str.replace(/[^0-9]/g, ''), 10);
+    if (isNaN(ageNum) || ageNum <= 5) return '4 & 5 Years';
+    if (ageNum === 6) return '6 Years';
+    if (ageNum === 7) return '7 Years';
+    if (ageNum === 8) return '8 Years';
+    if (ageNum === 9) return '9 Years';
+    if (ageNum === 10) return '10 Years';
+    if (ageNum === 11) return '11 Years';
+    if (ageNum === 12) return '12 Years';
+    if (ageNum === 13 || ageNum === 14) return '13 & 14 Years';
+    if (ageNum >= 15 && ageNum <= 17) return '15, 16 & 17 Years';
     return '18 Years & Above';
   },
 

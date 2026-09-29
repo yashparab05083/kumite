@@ -99,7 +99,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
       } catch (err) {
         console.error('Error importing Excel:', err);
-        document.getElementById('importStatus').innerText = 'Failed to import Excel file. Check format.';
+        const statusEl = document.getElementById('importStatus');
+        if (statusEl) {
+          statusEl.className = 'fw-bold text-danger';
+          statusEl.innerText = 'Failed to import Excel file: ' + (err.message || 'Check column format.');
+        }
       }
     });
   }
