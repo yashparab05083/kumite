@@ -390,27 +390,27 @@ const SyncService = {
             </div>
             <div class="modal-body p-4">
               <div class="alert alert-info py-2 small mb-3">
-                <strong>Status:</strong> <span id="modalSyncStatus">${statusText}</span>
+                <strong>Current Status:</strong> <span id="modalSyncStatus" class="fw-bold">${statusText}</span>
               </div>
               
               <div class="mb-4">
-                <label class="form-label fw-bold">1-Click Create Organizer Room Code:</label>
+                <label class="form-label fw-bold">Enter Room Code to Join / Re-connect (Organizer or Tatami):</label>
                 <div class="input-group">
-                  <input type="text" id="generatedRoomInput" class="form-control fw-bold text-primary" value="${currentRoom}" readonly placeholder="Click Create Room below">
-                  <button class="btn btn-outline-secondary" onclick="SyncService.copyRoomCode()">📋 Copy</button>
+                  <input type="text" id="joinRoomCodeInput" class="form-control text-uppercase fw-bold text-primary" value="${currentRoom}" placeholder="e.g. KUMITE-4821">
+                  <button class="btn btn-success fw-bold" onclick="SyncService.joinPeerRoom()">⚡ Join / Re-connect Room</button>
                 </div>
-                <button class="btn btn-primary w-100 fw-bold mt-2" onclick="SyncService.createHostRoom()">✨ Create New Room Code (Host)</button>
+                <small class="text-muted">Both Organizer and Tatami laptops/phones can enter the same Room Code to sync live.</small>
               </div>
 
               <hr>
 
-              <div class="mb-3">
-                <label class="form-label fw-bold">Join Existing Room (Phones / Tatami Laptops):</label>
-                <div class="input-group">
-                  <input type="text" id="joinRoomCodeInput" class="form-control text-uppercase fw-bold" placeholder="e.g. KUMITE-4821">
-                  <button class="btn btn-success fw-bold" onclick="SyncService.joinPeerRoom()">⚡ Join Room</button>
+              <div class="mb-4">
+                <label class="form-label fw-bold">Or 1-Click Create New Room Code:</label>
+                <div class="input-group mb-2">
+                  <input type="text" id="generatedRoomInput" class="form-control fw-bold text-primary" value="${currentRoom}" readonly placeholder="Click Create Room below">
+                  <button class="btn btn-outline-secondary" onclick="SyncService.copyRoomCode()">📋 Copy</button>
                 </div>
-                <small class="text-muted">Enter the 6-digit Room Code created by the Organizer laptop.</small>
+                <button class="btn btn-primary w-100 fw-bold" onclick="SyncService.createHostRoom()">✨ Create New Room Code</button>
               </div>
 
               <hr>
@@ -429,14 +429,17 @@ const SyncService = {
   createHostRoom() {
     const randomNum = Math.floor(1000 + Math.random() * 9000);
     const roomCode = `KUMITE-${randomNum}`;
-    document.getElementById('generatedRoomInput').value = roomCode;
-    this.initRoomSync(roomCode, true);
+    const input = document.getElementById('generatedRoomInput');
+    if (input) input.value = roomCode;
+    const joinInput = document.getElementById('joinRoomCodeInput');
+    if (joinInput) joinInput.value = roomCode;
+    this.initRoomSync(roomCode);
   },
 
   joinPeerRoom() {
     const input = document.getElementById('joinRoomCodeInput').value.trim().toUpperCase();
     if (!input) return alert('Please enter a valid Room Code!');
-    this.initRoomSync(input, false);
+    this.initRoomSync(input);
     const modalEl = document.getElementById('syncRoomModal');
     if (modalEl) {
       const modal = bootstrap.Modal.getInstance(modalEl);
@@ -445,14 +448,14 @@ const SyncService = {
   },
 
   copyRoomCode() {
-    const input = document.getElementById('generatedRoomInput');
+    const input = document.getElementById('generatedRoomInput') || document.getElementById('joinRoomCodeInput');
     if (input && input.value) {
       navigator.clipboard.writeText(input.value);
       alert('Room Code copied to clipboard: ' + input.value);
     }
   },
 
-  initRoomSync(roomCode, isHost = false) {
+  initRoomSync(roomCode) {
     if (typeof Peer === 'undefined') return;
 
     if (this.peer) {
@@ -460,50 +463,81 @@ const SyncService = {
     }
 
     this.activeRoomCode = roomCode;
-    this.isHost = isHost;
     localStorage.setItem('kumite_active_room_code', roomCode);
 
     const safeRoomId = roomCode.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const peerId = isHost ? `host-${safeRoomId}` : `client-${safeRoomId}-${Math.random().toString(36).substr(2, 5)}`;
+    const myPeerId = `peer-${safeRoomId}-${Math.random().toString(36).substr(2, 6)}`;
     
     try {
-      this.peer = new Peer(peerId);
+      this.peer = new Peer(myPeerId);
 
       this.peer.on('open', (id) => {
         this.updateSyncBadge(`🌐 Room: ${roomCode}`, true);
-        if (!isHost) {
-          // Connect to Host room
-          const conn = this.peer.connect(`host-${safeRoomId}`);
-          this.setupConnection(conn);
-        }
+        
+        // Register active peer ID in local/storage registry & connect to peers
+        this.registerAndConnectRoomPeers(safeRoomId, myPeerId);
       });
 
       this.peer.on('connection', (conn) => {
         this.setupConnection(conn);
-        conn.on('open', () => {
-          if (this.state.bouts && this.state.bouts.length > 0) {
-            conn.send({ type: 'SYNC_FULL_STATE', state: this.state });
-          } else {
-            conn.send({ type: 'REQUEST_LATEST_STATE' });
-          }
-        });
       });
 
       this.peer.on('error', (err) => {
-        console.warn('PeerJS Room Sync Error:', err);
-        this.updateSyncBadge('🌐 Sync: Offline', false);
+        console.warn('PeerJS Room Sync Notice:', err);
+        // Fallback to state badge
+        this.updateSyncBadge(`🌐 Room: ${roomCode} (Connecting...)`, false);
       });
     } catch (err) {
-      console.warn('PeerJS init failed:', err);
+      console.warn('PeerJS init error:', err);
     }
   },
 
+  registerAndConnectRoomPeers(safeRoomId, myPeerId) {
+    const storageKey = `kumite_room_peers_${safeRoomId}`;
+    let existingPeers = [];
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) existingPeers = JSON.parse(raw);
+    } catch(e) {}
+
+    if (!Array.isArray(existingPeers)) existingPeers = [];
+    
+    // Connect to all existing room peers
+    existingPeers.forEach(peerId => {
+      if (peerId !== myPeerId) {
+        try {
+          const conn = this.peer.connect(peerId);
+          this.setupConnection(conn);
+        } catch(e) {}
+      }
+    });
+
+    // Add my peerId to registry
+    if (existingPeers.indexOf(myPeerId) === -1) {
+      existingPeers.push(myPeerId);
+      // Keep only recent 10 active peers to save space
+      if (existingPeers.length > 10) existingPeers = existingPeers.slice(-10);
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(existingPeers));
+      } catch(e) {}
+    }
+
+    // Also connect to primary host fallback ID if available
+    try {
+      const hostConn = this.peer.connect(`host-${safeRoomId}`);
+      this.setupConnection(hostConn);
+    } catch(e) {}
+  },
+
   setupConnection(conn) {
+    if (!conn) return;
+
     if (this.peerConnections.indexOf(conn) === -1) {
       this.peerConnections.push(conn);
     }
 
     conn.on('open', () => {
+      this.updateSyncBadge(`🌐 Room: ${this.activeRoomCode} (Active)`, true);
       if (this.state.bouts && this.state.bouts.length > 0) {
         conn.send({ type: 'SYNC_FULL_STATE', state: this.state });
       } else {
@@ -536,7 +570,9 @@ const SyncService = {
     if (this.peerConnections && this.peerConnections.length > 0) {
       this.peerConnections.forEach(conn => {
         if (conn && conn.open) {
-          conn.send({ type: 'SYNC_FULL_STATE', state: this.state });
+          try {
+            conn.send({ type: 'SYNC_FULL_STATE', state: this.state });
+          } catch(e) {}
         }
       });
     }
