@@ -250,30 +250,17 @@ const BoutEditor = {
     const statusEl = document.getElementById('importStatus');
     if (statusEl) statusEl.innerText = 'Preparing PDF export for all bout sheets... Please wait...';
 
-    // Create background section in document body for rendering bout sheets
-    let batchSection = document.getElementById('allBoutsBackgroundSection');
-    if (!batchSection) {
-      batchSection = document.createElement('div');
-      batchSection.id = 'allBoutsBackgroundSection';
-      batchSection.style.position = 'absolute';
-      batchSection.style.left = '-9999px';
-      batchSection.style.top = '0';
-      batchSection.style.width = '1120px';
-      batchSection.style.backgroundColor = '#ffffff';
-      batchSection.style.padding = '15px';
-      document.body.appendChild(batchSection);
-    }
+    const previousBoutId = this.activeBoutId;
 
     const opt = {
       margin:       [0.05, 0.05, 0.05, 0.05],
       filename:     'Shotokan_Championship_All_Bout_Sheets.pdf',
       image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2, useCORS: true, allowTaint: true, logging: false, scrollX: 0, scrollY: 0, width: 1090, windowWidth: 1120 },
+      html2canvas:  { scale: 2, useCORS: true, logging: false, scrollX: 0, scrollY: 0 },
       jsPDF:        { unit: 'in', format: 'a4', orientation: 'landscape', compress: true }
     };
 
     try {
-      let masterWorker = null;
       let masterPdf = null;
 
       for (let i = 0; i < bouts.length; i++) {
@@ -282,54 +269,53 @@ const BoutEditor = {
         if (!bracket) continue;
 
         if (statusEl) {
-          statusEl.innerText = `Capturing PDF: Bout Sheet ${i + 1} of ${bouts.length} (${b.boutName})...`;
+          statusEl.innerText = `Generating PDF: Bout Sheet ${i + 1} of ${bouts.length} (${b.boutName})...`;
         }
 
-        // Render current single bout sheet cleanly into background section
-        batchSection.innerHTML = `
-          <div class="bout-sheet-single-target" style="width: 1090px; margin: 0 auto; background: #ffffff;">
-            ${this.generateBoutSheetHTML(bracket, false)}
-          </div>
-        `;
-
-        const element = batchSection.querySelector('.bout-sheet-single-target');
+        // Render bout sheet in active container exactly as seen on screen
+        this.renderBoutSheet(b.id, 'activeBoutDiagramContainer');
+        const element = document.querySelector('.bout-sheet-printable');
         if (!element) continue;
 
-        // Allow DOM styles and layout to settle
-        await new Promise(resolve => setTimeout(resolve, 80));
+        // Small delay for DOM layout render
+        await new Promise(resolve => setTimeout(resolve, 100));
 
-        // Use html2pdf worker to capture canvas of single bout sheet (height ~700px, well within limits)
         const worker = html2pdf().set(opt).from(element);
-        const canvas = await worker.toCanvas().get('canvas');
-        if (!canvas) continue;
 
-        const imgData = canvas.toDataURL('image/jpeg', 0.98);
-
-        if (!masterPdf) {
-          // On first page, initialize PDF from html2pdf worker
-          masterWorker = worker.toPdf();
-          masterPdf = await masterWorker.get('pdf');
+        if (i === 0) {
+          // Page 1: Create initial PDF instance using html2pdf's native worker
+          const pdfWorker = worker.toPdf();
+          masterPdf = await pdfWorker.get('pdf');
         } else {
-          // For subsequent pages, add a new landscape page and draw the image
-          masterPdf.addPage([canvas.width, canvas.height], 'landscape');
-          masterPdf.addImage(imgData, 'JPEG', 0, 0, canvas.width, canvas.height);
+          // Pages 2..N: Capture canvas with exact html2canvas opt and draw image
+          const canvas = await worker.toCanvas().get('canvas');
+          if (canvas && masterPdf) {
+            const imgData = canvas.toDataURL('image/jpeg', 0.98);
+            masterPdf.addPage('a4', 'landscape');
+            // A4 landscape in inches = 11.69 x 8.27. With 0.05 margin: printable width = 11.59, height = 8.17
+            masterPdf.addImage(imgData, 'JPEG', 0.05, 0.05, 11.59, 8.17);
+          }
         }
+      }
+
+      // Restore active bout view
+      if (previousBoutId) {
+        this.renderBoutSheet(previousBoutId, 'activeBoutDiagramContainer');
       }
 
       if (masterPdf) {
         masterPdf.save('Shotokan_Championship_All_Bout_Sheets.pdf');
         if (statusEl) statusEl.innerText = 'All Bout Sheets downloaded successfully in PDF!';
       } else {
-        if (statusEl) statusEl.innerText = 'No bout sheets were captured.';
+        if (statusEl) statusEl.innerText = 'No bout sheets to export.';
       }
     } catch (err) {
       console.error('All Bouts PDF Export Error:', err);
+      if (previousBoutId) {
+        this.renderBoutSheet(previousBoutId, 'activeBoutDiagramContainer');
+      }
       if (statusEl) statusEl.innerText = 'PDF Export failed: ' + err.message;
       alert('Failed to export all bouts PDF: ' + err.message);
-    } finally {
-      if (document.getElementById('allBoutsBackgroundSection')) {
-        document.body.removeChild(batchSection);
-      }
     }
   },
 
