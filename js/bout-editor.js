@@ -7,6 +7,14 @@ const BoutEditor = {
   activeBoutId: null,
   isEditMode: false,
 
+  cleanParticipantName(str) {
+    if (str === undefined || str === null) return '';
+    return String(str)
+      .replace(/^[\s\(\[\{]*[YNyn][\s\)\]\}]*[-\/:\s]*/i, '') // Strips leading (Y), (N), Y -, N -, (y), (n), etc.
+      .replace(/[\s\(\[\{]+[YNyn][\s\)\]\}]*$/i, '')           // Strips trailing (Y), (N), (y), (n), etc.
+      .trim();
+  },
+
   toggleEditMode() {
     this.isEditMode = !this.isEditMode;
     if (this.activeBoutId) {
@@ -34,7 +42,7 @@ const BoutEditor = {
         <div class="fighter-box ${label.toLowerCase()} ${winnerClass} d-flex justify-content-between align-items-center">
           <div class="fighter-name-container flex-grow-1">
             <span class="badge bg-secondary me-1 align-middle">${label}</span>
-            <span class="fw-bold align-middle">${slotParticipant.name}</span>
+            <span class="fw-bold align-middle">${this.cleanParticipantName(slotParticipant.name)}</span>
           </div>
           ${(isOrganizer && this.isEditMode && slotIndex !== undefined) ? `
             <button class="btn btn-xs btn-light py-0 px-1 ms-1 border fs-7 print-hide flex-shrink-0" onclick="event.stopPropagation(); BoutEditor.openSlotModal('${bracket.boutId}', ${slotIndex})">⚙️</button>
@@ -159,10 +167,10 @@ const BoutEditor = {
         <!-- MEDALS & REFEREES FOOTER -->
         ${(() => {
           const medals = bracket.medals || {};
-          const goldName = medals.gold ? medals.gold.name : '_______';
-          const silverName = medals.silver ? medals.silver.name : '_______';
-          const bronze1Name = medals.bronze1 ? medals.bronze1.name : '_______';
-          const bronze2Name = medals.bronze2 ? medals.bronze2.name : '_______';
+          const goldName = medals.gold ? this.cleanParticipantName(medals.gold.name) : '_______';
+          const silverName = medals.silver ? this.cleanParticipantName(medals.silver.name) : '_______';
+          const bronze1Name = medals.bronze1 ? this.cleanParticipantName(medals.bronze1.name) : '_______';
+          const bronze2Name = medals.bronze2 ? this.cleanParticipantName(medals.bronze2.name) : '_______';
           return `
             <div class="border-top mt-2 pt-2">
               <div class="row text-center fw-bold fs-6 mb-2">
@@ -208,8 +216,8 @@ const BoutEditor = {
               ${this.isEditMode ? '✏️ Exit Edit Mode' : '✏️ Enable Edit & Reassign Mode'}
             </button>
             ${this.isEditMode ? `
-              <button class="btn btn-sm btn-success" onclick="BoutEditor.openAddParticipantModal('${boutId}')">➕ Add Late Entry</button>
-              <button class="btn btn-sm btn-info text-white" onclick="BoutEditor.openQuickSwapModal('${boutId}')">🔀 Quick Swap Slots</button>
+              <button class="btn btn-sm btn-success" onclick="${bracket.eventType === 'Kata' ? `BoutEditor.openAddKataCompetitorModal('${boutId}')` : `BoutEditor.openAddParticipantModal('${boutId}')`}">➕ Add Late Entry</button>
+              ${bracket.eventType !== 'Kata' ? `<button class="btn btn-sm btn-info text-white" onclick="BoutEditor.openQuickSwapModal('${boutId}')">🔀 Quick Swap Slots</button>` : ''}
             ` : ''}
           </div>
         ` : ''}
@@ -660,8 +668,15 @@ const BoutEditor = {
                   <tr>
                     <td class="fw-bold">${idx + 1}</td>
                     <td class="text-start">
-                      <span class="fw-bold">${comp.name}</span>
-                      <small class="text-muted ms-1">(${comp.branch || 'Dojo'})</small>
+                      <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                          <span class="fw-bold">${this.cleanParticipantName(comp.name)}</span>
+                          <small class="text-muted ms-1">(${comp.branch || 'Dojo'})</small>
+                        </div>
+                        ${(isOrganizer && this.isEditMode) ? `
+                          <button class="btn btn-xs btn-light py-0 px-1 ms-1 border fs-7 print-hide flex-shrink-0" onclick="event.stopPropagation(); BoutEditor.openKataCompetitorModal('${bracket.boutId}', '${comp.id}')">⚙️</button>
+                        ` : ''}
+                      </div>
                     </td>
                     ${[0, 1, 2, 3, 4].map(refIdx => `
                       <td>
@@ -760,6 +775,220 @@ const BoutEditor = {
     });
 
     SyncService.checkBoutCompletion(boutId);
+    SyncService.saveToLocal();
+    this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
+  },
+
+  openKataCompetitorModal(boutId, compId) {
+    const bracket = SyncService.state.brackets[boutId];
+    if (!bracket || bracket.eventType !== 'Kata') return;
+
+    const compIndex = bracket.competitors.findIndex(c => c.id === compId);
+    const comp = bracket.competitors[compIndex];
+    if (!comp) return;
+
+    const otherBouts = SyncService.state.bouts.filter(b => SyncService.state.brackets[b.id]?.eventType === 'Kata');
+    const boutOptions = otherBouts.map(b => `<option value="${b.id}" ${b.id === boutId ? 'selected' : ''}>${b.boutName}</option>`).join('');
+
+    const compOptions = bracket.competitors.map((c, i) => `
+      <option value="${i}" ${i === compIndex ? 'disabled' : ''}>Position ${i + 1}: ${this.cleanParticipantName(c.name)}</option>
+    `).join('');
+
+    const modalHtml = `
+      <div class="modal fade" id="kataCompetitorModal" tabindex="-1">
+        <div class="modal-dialog">
+          <div class="modal-content border-2 border-primary">
+            <div class="modal-header bg-dark text-white">
+              <h5 class="modal-title">Edit Kata Competitor #${compIndex + 1}</h5>
+              <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+              <div class="card mb-3 p-2 bg-light">
+                <h6 class="fw-bold mb-1">${this.cleanParticipantName(comp.name)}</h6>
+                <small class="text-muted">Branch: ${comp.branch || 'Dojo'} | Age: ${comp.age || 'N/A'}</small>
+              </div>
+
+              <!-- 1. EDIT COMPETITOR DETAILS -->
+              <h6 class="fw-bold text-primary">1. Edit Competitor Details:</h6>
+              <div class="mb-2">
+                <label class="form-label small mb-1">Full Name:</label>
+                <input type="text" id="editKataCompName" class="form-control form-control-sm" value="${this.cleanParticipantName(comp.name)}">
+              </div>
+              <div class="mb-3">
+                <label class="form-label small mb-1">Branch / Dojo:</label>
+                <input type="text" id="editKataCompBranch" class="form-control form-control-sm" value="${comp.branch || ''}">
+              </div>
+              <button class="btn btn-success btn-sm w-100 mb-3 fw-bold" onclick="BoutEditor.confirmSaveKataCompetitor('${boutId}', '${compId}')">Save Details</button>
+
+              <!-- 2. REORDER / SWAP POSITION -->
+              <h6 class="fw-bold text-primary border-top pt-3">2. Swap Position in this Kata Sheet:</h6>
+              <div class="input-group mb-3">
+                <select id="swapKataTargetSelect" class="form-select form-select-sm">${compOptions}</select>
+                <button class="btn btn-primary btn-sm fw-bold" onclick="BoutEditor.confirmSwapKataPosition('${boutId}', ${compIndex})">Swap Position</button>
+              </div>
+
+              <!-- 3. MOVE TO ANOTHER KATA SHEET -->
+              <h6 class="fw-bold text-primary border-top pt-3">3. Move Competitor to Another Kata Sheet:</h6>
+              <div class="mb-3">
+                <label class="form-label small mb-1">Target Kata Sheet:</label>
+                <select id="moveKataTargetBoutSelect" class="form-select form-select-sm">${boutOptions}</select>
+              </div>
+              <button class="btn btn-warning text-dark btn-sm fw-bold w-100 mb-3" onclick="BoutEditor.confirmMoveKataCompetitor('${boutId}', '${compId}')">Move Competitor</button>
+
+              <!-- 4. DELETE / REMOVE -->
+              <div class="border-top pt-2 text-end">
+                <button class="btn btn-danger btn-sm" onclick="BoutEditor.confirmRemoveKataCompetitor('${boutId}', '${compId}')">🗑️ Remove Competitor</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('modalContainer').innerHTML = modalHtml;
+    const modal = new bootstrap.Modal(document.getElementById('kataCompetitorModal'));
+    modal.show();
+  },
+
+  openAddKataCompetitorModal(boutId) {
+    const bracket = SyncService.state.brackets[boutId];
+    if (!bracket || bracket.eventType !== 'Kata') return;
+
+    const modalHtml = `
+      <div class="modal fade" id="addKataCompetitorModal" tabindex="-1">
+        <div class="modal-dialog">
+          <div class="modal-content border-2 border-success">
+            <div class="modal-header bg-success text-white">
+              <h5 class="modal-title">➕ Add Late Entry Kata Competitor</h5>
+              <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+              <div class="mb-2">
+                <label class="form-label small mb-1">Full Name:</label>
+                <input type="text" id="addKataCompName" class="form-control form-control-sm" placeholder="Enter Competitor Full Name">
+              </div>
+              <div class="mb-3">
+                <label class="form-label small mb-1">Branch / Dojo:</label>
+                <input type="text" id="addKataCompBranch" class="form-control form-control-sm" placeholder="Enter Branch / Dojo Name">
+              </div>
+              <button class="btn btn-success w-100 fw-bold" onclick="BoutEditor.confirmAddKataCompetitor('${boutId}')">Add Competitor to Kata Sheet</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('modalContainer').innerHTML = modalHtml;
+    const modal = new bootstrap.Modal(document.getElementById('addKataCompetitorModal'));
+    modal.show();
+  },
+
+  confirmSaveKataCompetitor(boutId, compId) {
+    const bracket = SyncService.state.brackets[boutId];
+    if (!bracket || bracket.eventType !== 'Kata') return;
+
+    const name = this.cleanParticipantName(document.getElementById('editKataCompName').value.trim());
+    const branch = document.getElementById('editKataCompBranch').value.trim();
+
+    if (!name) return alert('Competitor name is required!');
+
+    const comp = bracket.competitors.find(c => c.id === compId);
+    if (comp) {
+      comp.name = name;
+      comp.branch = branch;
+    }
+
+    bootstrap.Modal.getInstance(document.getElementById('kataCompetitorModal')).hide();
+    SyncService.saveToLocal();
+    this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
+  },
+
+  confirmSwapKataPosition(boutId, sourceIdx) {
+    const bracket = SyncService.state.brackets[boutId];
+    if (!bracket || bracket.eventType !== 'Kata') return;
+
+    const targetIdx = parseInt(document.getElementById('swapKataTargetSelect').value, 10);
+    if (isNaN(targetIdx) || targetIdx < 0 || targetIdx >= bracket.competitors.length) return;
+
+    const temp = bracket.competitors[sourceIdx];
+    bracket.competitors[sourceIdx] = bracket.competitors[targetIdx];
+    bracket.competitors[targetIdx] = temp;
+
+    // Renumber
+    bracket.competitors.forEach((c, idx) => c.no = idx + 1);
+
+    BracketEngine.recalculateKataRanks(bracket);
+    bootstrap.Modal.getInstance(document.getElementById('kataCompetitorModal')).hide();
+    SyncService.saveToLocal();
+    this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
+  },
+
+  confirmMoveKataCompetitor(sourceBoutId, compId) {
+    const targetBoutId = document.getElementById('moveKataTargetBoutSelect').value;
+    if (sourceBoutId === targetBoutId) return alert('Target Kata sheet is the same as current sheet!');
+
+    const sourceBracket = SyncService.state.brackets[sourceBoutId];
+    const targetBracket = SyncService.state.brackets[targetBoutId];
+    if (!sourceBracket || !targetBracket) return;
+
+    const compIdx = sourceBracket.competitors.findIndex(c => c.id === compId);
+    if (compIdx === -1) return;
+
+    const [comp] = sourceBracket.competitors.splice(compIdx, 1);
+    comp.no = targetBracket.competitors.length + 1;
+    targetBracket.competitors.push(comp);
+
+    // Renumber source and recalculate ranks
+    sourceBracket.competitors.forEach((c, idx) => c.no = idx + 1);
+    BracketEngine.recalculateKataRanks(sourceBracket);
+    BracketEngine.recalculateKataRanks(targetBracket);
+
+    bootstrap.Modal.getInstance(document.getElementById('kataCompetitorModal')).hide();
+    SyncService.saveToLocal();
+    this.renderBoutSheet(sourceBoutId, 'activeBoutDiagramContainer');
+  },
+
+  confirmRemoveKataCompetitor(boutId, compId) {
+    if (!confirm('Are you sure you want to remove this competitor from this Kata sheet?')) return;
+
+    const bracket = SyncService.state.brackets[boutId];
+    if (!bracket || bracket.eventType !== 'Kata') return;
+
+    const compIdx = bracket.competitors.findIndex(c => c.id === compId);
+    if (compIdx !== -1) {
+      bracket.competitors.splice(compIdx, 1);
+      bracket.competitors.forEach((c, idx) => c.no = idx + 1);
+      BracketEngine.recalculateKataRanks(bracket);
+    }
+
+    bootstrap.Modal.getInstance(document.getElementById('kataCompetitorModal')).hide();
+    SyncService.saveToLocal();
+    this.renderBoutSheet(sourceBoutId, 'activeBoutDiagramContainer');
+  },
+
+  confirmAddKataCompetitor(boutId) {
+    const bracket = SyncService.state.brackets[boutId];
+    if (!bracket || bracket.eventType !== 'Kata') return;
+
+    const name = this.cleanParticipantName(document.getElementById('addKataCompName').value.trim());
+    const branch = document.getElementById('addKataCompBranch').value.trim();
+
+    if (!name) return alert('Competitor full name is required!');
+
+    const newComp = {
+      id: 'p_' + Math.random().toString(36).substr(2, 9),
+      no: bracket.competitors.length + 1,
+      name,
+      branch: branch || 'Main Dojo',
+      scores: [0, 0, 0, 0, 0],
+      totalScore: 0,
+      place: null
+    };
+
+    bracket.competitors.push(newComp);
+    BracketEngine.recalculateKataRanks(bracket);
+
+    bootstrap.Modal.getInstance(document.getElementById('addKataCompetitorModal')).hide();
     SyncService.saveToLocal();
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
   }

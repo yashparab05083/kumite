@@ -3,6 +3,14 @@
  */
 
 const ExcelImporter = {
+  cleanParticipantName(str) {
+    if (str === undefined || str === null) return '';
+    return String(str)
+      .replace(/^[\s\(\[\{]*[YNyn][\s\)\]\}]*[-\/:\s]*/i, '') // Strips leading (Y), (N), Y -, N -, (y), (n), etc.
+      .replace(/[\s\(\[\{]+[YNyn][\s\)\]\}]*$/i, '')           // Strips trailing (Y), (N), (y), (n), etc.
+      .trim();
+  },
+
   // Normalize belt values to integer Kyu (9 to 1) or Dan (-1 to -9)
   parseBelt(beltValue) {
     if (beltValue === undefined || beltValue === null) return 9;
@@ -115,7 +123,7 @@ const ExcelImporter = {
             };
 
             const rawName = findVal(['name', 'participant', 'athlete', 'student', 'competitor', 'player', 'fullname']);
-            const name = (rawName !== undefined && rawName !== null) ? String(rawName).trim() : '';
+            const name = this.cleanParticipantName(rawName);
             if (!name) return; // Skip empty rows without participant names
 
             const rawGender = findVal(['gender', 'sex', 'm/f', 'm_f', 'mf', 'boy/girl', 'male/female', 'boy / girl', 'male / female']);
