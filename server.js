@@ -13,12 +13,13 @@ app.use(cors());
 app.use(express.json({ limit: '20mb' }));
 
 // Aiven PostgreSQL Database Connection URL from Environment Variables
-const AIVEN_DB_URI = process.env.DATABASE_URL;
+const rawUri = process.env.DATABASE_URL || '';
+const cleanUri = rawUri ? rawUri.replace(/\?.*$/, '') : '';
 
-const pool = new Pool({
-  connectionString: AIVEN_DB_URI,
+const pool = cleanUri ? new Pool({
+  connectionString: cleanUri,
   ssl: { rejectUnauthorized: false }
-});
+}) : null;
 
 // Initialize database schema
 async function initDatabase() {
