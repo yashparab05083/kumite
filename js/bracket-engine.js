@@ -131,38 +131,78 @@ const BracketEngine = {
     // Sort branches by count descending
     const sortedBranches = Object.keys(branchGroups).sort((a, b) => branchGroups[b].length - branchGroups[a].length);
 
-    // Left Pool (Pool A) slot positions (Matches 1, 2, 3, 4)
-    const leftPoolSlots = [0, 2, 4, 6, 1, 3, 5, 7];
-    // Right Pool (Pool B) slot positions (Matches 5, 6, 7, 8)
-    const rightPoolSlots = [8, 10, 12, 14, 9, 11, 13, 15];
+    // Interleave participants across branches to form a balanced sequence
+    const interleavedList = [];
+    while (interleavedList.length < participants.length) {
+      let added = false;
+      for (let i = 0; i < sortedBranches.length; i++) {
+        const b = sortedBranches[i];
+        if (branchGroups[b].length > 0) {
+          interleavedList.push(branchGroups[b].shift());
+          added = true;
+        }
+      }
+      if (!added) break;
+    }
 
-    let leftIdx = 0;
-    let rightIdx = 0;
+    // INFINITY_SEED_MAP seed indices mapping:
+    // Left Pool seed indices:  [0, 3, 4, 7, 8, 11, 12, 15] -> Slots: 0 (M1 Top), 7 (M4 Bottom), 2 (M2), 5 (M3), 1 (M1 AKA), 6 (M4 AAO), 3 (M2 AKA), 4 (M3 AAO)
+    // Right Pool seed indices: [1, 2, 5, 6, 9, 10, 13, 14] -> Slots: 15 (M8 Bottom), 8 (M5 Top), 13 (M7), 10 (M6), 14 (M8 AAO), 9 (M5 AKA), 12 (M7 AAO), 11 (M6 AKA)
+    const leftPoolSeedIndices = [0, 3, 4, 7, 8, 11, 12, 15];
+    const rightPoolSeedIndices = [1, 2, 5, 6, 9, 10, 13, 14];
 
-    sortedBranches.forEach(branch => {
-      const list = branchGroups[branch];
-      list.forEach((p, pIdx) => {
-        let assignedSlot = null;
+    const usedSeedIndices = new Set();
+    const branchPoolCounts = {}; // Track left/right pool count per branch
 
-        // Alternating allocation: Even index -> Left Pool (Pool A), Odd index -> Right Pool (Pool B)
-        if (pIdx % 2 === 0) {
-          if (leftIdx < leftPoolSlots.length) {
-            assignedSlot = leftPoolSlots[leftIdx++];
-          } else if (rightIdx < rightPoolSlots.length) {
-            assignedSlot = rightPoolSlots[rightIdx++];
-          }
+    interleavedList.forEach(p => {
+      const b = (p.branch || 'Unknown').trim();
+      if (!branchPoolCounts[b]) branchPoolCounts[b] = { left: 0, right: 0 };
+
+      // Prefer pool where branch currently has fewer participants
+      let preferLeft = true;
+      if (branchPoolCounts[b].left > branchPoolCounts[b].right) {
+        preferLeft = false;
+      } else if (branchPoolCounts[b].right > branchPoolCounts[b].left) {
+        preferLeft = true;
+      } else {
+        // Equal count for this branch: pick whichever pool has the smaller next available seed index
+        const nextLeft = leftPoolSeedIndices.find(idx => !usedSeedIndices.has(idx));
+        const nextRight = rightPoolSeedIndices.find(idx => !usedSeedIndices.has(idx));
+        if (nextLeft !== undefined && nextRight !== undefined) {
+          preferLeft = nextLeft < nextRight;
+        } else if (nextLeft !== undefined) {
+          preferLeft = true;
         } else {
-          if (rightIdx < rightPoolSlots.length) {
-            assignedSlot = rightPoolSlots[rightIdx++];
-          } else if (leftIdx < leftPoolSlots.length) {
-            assignedSlot = leftPoolSlots[leftIdx++];
-          }
+          preferLeft = false;
+        }
+      }
+
+      let chosenSeedIdx = undefined;
+
+      if (preferLeft) {
+        chosenSeedIdx = leftPoolSeedIndices.find(idx => !usedSeedIndices.has(idx));
+        if (chosenSeedIdx === undefined) {
+          chosenSeedIdx = rightPoolSeedIndices.find(idx => !usedSeedIndices.has(idx));
+        }
+      } else {
+        chosenSeedIdx = rightPoolSeedIndices.find(idx => !usedSeedIndices.has(idx));
+        if (chosenSeedIdx === undefined) {
+          chosenSeedIdx = leftPoolSeedIndices.find(idx => !usedSeedIndices.has(idx));
+        }
+      }
+
+      if (chosenSeedIdx !== undefined) {
+        usedSeedIndices.add(chosenSeedIdx);
+
+        if (leftPoolSeedIndices.includes(chosenSeedIdx)) {
+          branchPoolCounts[b].left++;
+        } else {
+          branchPoolCounts[b].right++;
         }
 
-        if (assignedSlot !== null) {
-          slots[assignedSlot] = { ...p, seedNumber: assignedSlot + 1 };
-        }
-      });
+        const slotIdx = this.INFINITY_SEED_MAP[chosenSeedIdx];
+        slots[slotIdx] = { ...p, seedNumber: chosenSeedIdx + 1 };
+      }
     });
 
     return slots;
