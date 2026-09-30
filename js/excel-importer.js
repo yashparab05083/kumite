@@ -118,8 +118,43 @@ const ExcelImporter = {
             const name = (rawName !== undefined && rawName !== null) ? String(rawName).trim() : '';
             if (!name) return; // Skip empty rows without participant names
 
-            const genderVal = (findVal(['gender', 'sex', 'm/f', 'g']) || '').toString().trim().toLowerCase();
-            const gender = (genderVal.startsWith('f') || genderVal === 'g' || genderVal.indexOf('female') !== -1 || genderVal === 'girl') ? 'Female' : 'Male';
+            const rawGender = findVal(['gender', 'sex', 'm/f', 'm_f', 'mf', 'boy/girl', 'male/female', 'boy / girl', 'male / female']);
+            const rawCategory = findVal(['category', 'cat', 'group', 'event']);
+            
+            const genderVal = (rawGender !== undefined && rawGender !== null) ? String(rawGender).trim().toLowerCase() : '';
+            const catVal = (rawCategory !== undefined && rawCategory !== null) ? String(rawCategory).trim().toLowerCase() : '';
+
+            let gender = 'Male';
+            if (
+              genderVal.startsWith('f') || 
+              genderVal.indexOf('female') !== -1 || 
+              genderVal.indexOf('girl') !== -1 || 
+              genderVal === 'w' || 
+              genderVal.indexOf('women') !== -1
+            ) {
+              gender = 'Female';
+            } else if (
+              genderVal.startsWith('m') || 
+              genderVal.indexOf('male') !== -1 || 
+              genderVal.indexOf('boy') !== -1 || 
+              genderVal === 'men'
+            ) {
+              gender = 'Male';
+            } else if (
+              catVal.indexOf('female') !== -1 || 
+              catVal.indexOf('girl') !== -1 || 
+              catVal.indexOf('women') !== -1 || 
+              catVal.indexOf('girls') !== -1
+            ) {
+              gender = 'Female';
+            } else if (
+              catVal.indexOf('male') !== -1 || 
+              catVal.indexOf('boy') !== -1 || 
+              catVal.indexOf('men') !== -1 || 
+              catVal.indexOf('boys') !== -1
+            ) {
+              gender = 'Male';
+            }
 
             const rawAge = findVal(['age', 'years', 'yr', 'group', 'category', 'cat']);
             const ageCategory = this.getAgeCategory(rawAge);
