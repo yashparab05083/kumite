@@ -156,6 +156,9 @@ const TatamiManager = {
       return;
     }
 
+    const bout = SyncService.state.bouts.find(b => b.id === boutId);
+    const boutName = bout ? bout.boutName : 'Bout Sheet';
+
     SyncService.assignBoutToTatami(tatamiId, boutId);
 
     const modalEl = document.getElementById('assignBoutModal');
@@ -175,8 +178,15 @@ const TatamiManager = {
     }, 150);
 
     this.renderOrganizerDashboard('tatamiDashboardContainer');
+    this.renderOperatorView(tatamiId, 'tatamiOperatorContainer');
     if (typeof renderBoutList === 'function') {
       renderBoutList('boutSheetsListContainer');
+    }
+
+    const statusEl = document.getElementById('importStatus');
+    if (statusEl) {
+      statusEl.className = 'fw-bold text-success';
+      statusEl.innerText = `✅ Assigned "${boutName}" to Tatami ${tatamiId} successfully!`;
     }
   },
 

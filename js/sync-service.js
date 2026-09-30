@@ -224,6 +224,14 @@ const SyncService = {
   setBoutsAndBrackets(bouts, brackets) {
     this.state.bouts = bouts;
     this.state.brackets = brackets;
+    if (this.state.tatamis && Array.isArray(this.state.tatamis)) {
+      this.state.tatamis.forEach(t => {
+        t.activeBoutId = null;
+        t.activeMatchNumber = null;
+        t.assignedBoutIds = [];
+        t.status = 'Empty';
+      });
+    }
     this.saveToLocal();
   },
 
