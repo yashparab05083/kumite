@@ -176,21 +176,35 @@ function renderBoutList(containerId) {
 
   bouts.forEach(b => {
     html += `
-      <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" onclick="loadBoutIntoEditor('${b.id}')">
-        <div>
-          <h6 class="mb-0 fw-bold">${b.boutName}</h6>
-          <small class="text-muted">Code: ${b.boutCode} | ${b.participants.length} Participants</small>
+      <div class="list-group-item d-flex justify-content-between align-items-center">
+        <div style="cursor: pointer; flex: 1;" onclick="loadBoutIntoEditor('${b.id}')">
+          <h6 class="mb-0 fw-bold text-primary">${b.boutName}</h6>
+          <small class="text-muted">Code: ${b.boutCode} | ${b.participants.length} Competitors</small>
         </div>
-        <div>
-          <span class="badge ${b.tatamiId ? 'bg-primary' : 'bg-secondary'} me-2">${b.tatamiId ? 'Tatami ' + b.tatamiId : 'Unassigned'}</span>
+        <div class="d-flex align-items-center gap-2">
+          <select class="form-select form-select-sm fw-bold border-primary" style="width: 140px;" onchange="handleQuickTatamiAssign('${b.id}', this.value)">
+            <option value="" ${!b.tatamiId ? 'selected' : ''}>Unassigned</option>
+            ${Array.from({length: 8}, (_, i) => `<option value="${i+1}" ${b.tatamiId === (i+1) ? 'selected' : ''}>Tatami ${i+1}</option>`).join('')}
+          </select>
           <span class="badge ${b.status === 'Completed' ? 'bg-success' : 'bg-warning text-dark'}">${b.status}</span>
         </div>
-      </button>
+      </div>
     `;
   });
 
   html += `</div>`;
   container.innerHTML = html;
+}
+
+function handleQuickTatamiAssign(boutId, tatamiIdVal) {
+  if (!tatamiIdVal) {
+    SyncService.unassignBoutFromTatami(boutId);
+  } else {
+    const numericTatamiId = parseInt(tatamiIdVal, 10);
+    SyncService.assignBoutToTatami(numericTatamiId, boutId);
+  }
+  renderBoutList('boutSheetsListContainer');
+  TatamiManager.renderOrganizerDashboard('tatamiDashboardContainer');
 }
 
 function loadBoutIntoEditor(boutId) {

@@ -108,15 +108,11 @@ const TatamiManager = {
   openAssignModal(tatamiId) {
     const numericTatamiId = parseInt(tatamiId, 10);
     const bouts = SyncService.state.bouts || [];
-    if (bouts.length === 0) return alert('No bout sheets available! Please upload an Excel file first.');
+    if (bouts.length === 0) return alert('No bout sheets created yet! Please upload an Excel file first.');
 
-    const boutSelectOptions = bouts.map(b => {
-      let statusLabel = 'Unassigned';
-      if (b.tatamiId) {
-        statusLabel = b.tatamiId === numericTatamiId ? `Assigned to Tatami ${b.tatamiId}` : `Currently on Tatami ${b.tatamiId}`;
-      }
-      return `<option value="${b.id}" ${b.tatamiId === numericTatamiId ? 'selected' : ''}>[${statusLabel}] ${b.boutName} (${b.participants ? b.participants.length : 0} competitors)</option>`;
-    }).join('');
+    const unassigned = bouts.filter(b => !b.tatamiId);
+    const assignedOthers = bouts.filter(b => b.tatamiId && b.tatamiId !== numericTatamiId);
+    const assignedHere = bouts.filter(b => b.tatamiId === numericTatamiId);
 
     const modalHtml = `
       <div class="modal fade" id="assignBoutModal" tabindex="-1">
@@ -127,15 +123,53 @@ const TatamiManager = {
               <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-              <label class="form-label fw-bold">Select Bout Sheet:</label>
-              <select id="assignBoutSelect" class="form-select form-select-lg">
-                ${boutSelectOptions}
-              </select>
-              <small class="text-muted mt-2 d-block">Selecting a bout sheet assigned elsewhere will move it to Tatami ${numericTatamiId}.</small>
+              <h6 class="fw-bold text-primary mb-2">Unassigned Bout Sheets (${unassigned.length}):</h6>
+              ${unassigned.length > 0 ? `
+                <div class="list-group mb-4">
+                  ${unassigned.map(b => `
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                      <div>
+                        <h6 class="mb-0 fw-bold">${b.boutName}</h6>
+                        <small class="text-muted">${b.eventType} | ${b.ageCategory} | ${b.participants ? b.participants.length : 0} competitors</small>
+                      </div>
+                      <button class="btn btn-sm btn-success fw-bold" onclick="TatamiManager.directAssign(${numericTatamiId}, '${b.id}')">➕ Assign to Tatami ${numericTatamiId}</button>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : '<div class="alert alert-info py-2 small mb-4">All bout sheets are currently assigned. You can re-assign or move bouts below.</div>'}
+
+              ${assignedOthers.length > 0 ? `
+                <h6 class="fw-bold text-secondary mb-2">Bouts Assigned to Other Tatamis (${assignedOthers.length}):</h6>
+                <div class="list-group mb-4">
+                  ${assignedOthers.map(b => `
+                    <div class="list-group-item d-flex justify-content-between align-items-center bg-light">
+                      <div>
+                        <h6 class="mb-0 fw-bold">${b.boutName}</h6>
+                        <small class="text-muted">Currently on Tatami ${b.tatamiId}</small>
+                      </div>
+                      <button class="btn btn-sm btn-outline-warning fw-bold" onclick="TatamiManager.directAssign(${numericTatamiId}, '${b.id}')">🔁 Move to Tatami ${numericTatamiId}</button>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : ''}
+
+              ${assignedHere.length > 0 ? `
+                <h6 class="fw-bold text-success mb-2">Currently Assigned to Tatami ${numericTatamiId} (${assignedHere.length}):</h6>
+                <div class="list-group">
+                  ${assignedHere.map(b => `
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                      <div>
+                        <h6 class="mb-0 fw-bold text-success">${b.boutName}</h6>
+                        <small class="text-muted">Status: ${b.status}</small>
+                      </div>
+                      <button class="btn btn-sm btn-outline-danger" onclick="TatamiManager.directUnassign('${b.id}', ${numericTatamiId})">❌ Remove from Tatami</button>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : ''}
             </div>
             <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-              <button type="button" class="btn btn-primary fw-bold" onclick="TatamiManager.confirmAssign(${numericTatamiId})">Assign to Tatami ${numericTatamiId}</button>
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
           </div>
         </div>
@@ -147,29 +181,18 @@ const TatamiManager = {
     modal.show();
   },
 
-  confirmAssign(tatamiId) {
-    const select = document.getElementById('assignBoutSelect');
-    if (!select) return;
-    const boutId = select.value;
-    if (!boutId) {
-      alert('Please select a bout sheet.');
-      return;
-    }
-
+  directAssign(tatamiId, boutId) {
+    const numericTatamiId = parseInt(tatamiId, 10);
     const bout = SyncService.state.bouts.find(b => b.id === boutId);
     const boutName = bout ? bout.boutName : 'Bout Sheet';
 
-    SyncService.assignBoutToTatami(tatamiId, boutId);
+    SyncService.assignBoutToTatami(numericTatamiId, boutId);
 
     const modalEl = document.getElementById('assignBoutModal');
     if (modalEl) {
       const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
-      if (modal) {
-        try { modal.hide(); } catch(e) {}
-      }
+      if (modal) { try { modal.hide(); } catch(e) {} }
     }
-
-    // Force backdrop cleanup to ensure UI is never blocked
     setTimeout(() => {
       document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
       document.body.classList.remove('modal-open');
@@ -178,7 +201,7 @@ const TatamiManager = {
     }, 150);
 
     this.renderOrganizerDashboard('tatamiDashboardContainer');
-    this.renderOperatorView(tatamiId, 'tatamiOperatorContainer');
+    this.renderOperatorView(numericTatamiId, 'tatamiOperatorContainer');
     if (typeof renderBoutList === 'function') {
       renderBoutList('boutSheetsListContainer');
     }
@@ -186,8 +209,35 @@ const TatamiManager = {
     const statusEl = document.getElementById('importStatus');
     if (statusEl) {
       statusEl.className = 'fw-bold text-success';
-      statusEl.innerText = `✅ Assigned "${boutName}" to Tatami ${tatamiId} successfully!`;
+      statusEl.innerText = `✅ Assigned "${boutName}" to Tatami ${numericTatamiId} successfully!`;
     }
+  },
+
+  directUnassign(boutId, tatamiId) {
+    const numericTatamiId = parseInt(tatamiId, 10);
+    SyncService.unassignBoutFromTatami(boutId);
+
+    const modalEl = document.getElementById('assignBoutModal');
+    if (modalEl) {
+      const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+      if (modal) { try { modal.hide(); } catch(e) {} }
+    }
+    setTimeout(() => {
+      document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+      document.body.classList.remove('modal-open');
+      document.body.style.removeProperty('overflow');
+      document.body.style.removeProperty('padding-right');
+    }, 150);
+
+    this.renderOrganizerDashboard('tatamiDashboardContainer');
+    this.renderOperatorView(numericTatamiId, 'tatamiOperatorContainer');
+    if (typeof renderBoutList === 'function') {
+      renderBoutList('boutSheetsListContainer');
+    }
+  },
+
+  confirmAssign(tatamiId) {
+    this.openAssignModal(tatamiId);
   },
 
   loadBoutForRing(tatamiId, boutId) {
