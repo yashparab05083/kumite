@@ -79,7 +79,8 @@ document.addEventListener('DOMContentLoaded', () => {
         
         document.getElementById('importStatus').innerText = `Parsed ${participants.length} participants. Generating bout sheets...`;
         
-        const bouts = ExcelImporter.generateBoutGroups(participants);
+        const eventMode = document.getElementById('eventModeSelect') ? document.getElementById('eventModeSelect').value : 'both';
+        const bouts = ExcelImporter.generateBoutGroups(participants, eventMode);
         const brackets = {};
         
         bouts.forEach(b => {

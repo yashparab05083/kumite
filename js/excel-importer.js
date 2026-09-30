@@ -233,17 +233,18 @@ const ExcelImporter = {
     return '18 Years & Above';
   },
 
-  // Auto-generate Bout Groups from Participant List
-  generateBoutGroups(participants) {
+  // Auto-generate Bout Groups from Participant List (Kumite & Kata 1-to-2 Alignment)
+  generateBoutGroups(participants, eventMode = 'both') {
     const categoryBins = {};
 
     participants.forEach(p => {
       const ageCat = this.getAgeCategory(p.ageCategory || p.age);
-      const key = `${ageCat}_${p.gender}_${p.beltTier}`;
+      const gender = p.gender || 'Male';
+      const key = `${ageCat}_${gender}_${p.beltTier}`;
       if (!categoryBins[key]) {
         categoryBins[key] = {
           ageCat,
-          gender: p.gender,
+          gender: gender,
           beltTier: p.beltTier,
           list: []
         };
@@ -260,8 +261,8 @@ const ExcelImporter = {
 
       if (count === 0) return;
 
-      const numGroups = Math.max(1, Math.ceil(count / 8));
-      const groups = Array.from({ length: numGroups }, () => []);
+      const numKumiteGroups = Math.max(1, Math.ceil(count / 8));
+      const kumiteGroups = Array.from({ length: numKumiteGroups }, () => []);
 
       list.sort((a, b) => b.belt - a.belt);
 
@@ -270,27 +271,62 @@ const ExcelImporter = {
       const combinedOrdered = [...schoolHourKids, ...regularKids];
 
       combinedOrdered.forEach((p, idx) => {
-        const targetGroupIdx = idx % numGroups;
-        groups[targetGroupIdx].push(p);
+        const targetGroupIdx = idx % numKumiteGroups;
+        kumiteGroups[targetGroupIdx].push(p);
       });
 
-      groups.forEach((groupParticipants, gIdx) => {
+      kumiteGroups.forEach((groupParticipants, gIdx) => {
         const letter = String.fromCharCode(97 + gIdx); // 'a', 'b', 'c'...
         const cleanAgeCatCode = bin.ageCat.toLowerCase().replace(/[^a-z0-9]/g, '');
-        const boutCode = `${cleanAgeCatCode}_${letter}`;
-        const boutName = `${bin.ageCat} - ${bin.gender} - ${bin.beltTier} (Group ${letter.toUpperCase()})`;
 
-        bouts.push({
-          id: 'bout_' + Math.random().toString(36).substr(2, 9),
-          boutCode,
-          boutName,
-          ageCategory: bin.ageCat,
-          gender: bin.gender,
-          beltTier: bin.beltTier,
-          participants: groupParticipants,
-          status: 'Pending',
-          tatamiId: null
-        });
+        // 1. KUMITE BOUTS (8-9 participants)
+        if (eventMode === 'kumite' || eventMode === 'both') {
+          const boutCode = `${cleanAgeCatCode}_kumite_${letter}`;
+          const boutName = `${bin.ageCat} - ${bin.gender} - ${bin.beltTier} - KUMITE (Group ${letter.toUpperCase()})`;
+
+          bouts.push({
+            id: 'bout_kumite_' + Math.random().toString(36).substr(2, 9),
+            boutCode,
+            boutName,
+            eventType: 'Kumite',
+            ageCategory: bin.ageCat,
+            gender: bin.gender,
+            beltTier: bin.beltTier,
+            participants: groupParticipants,
+            status: 'Pending',
+            tatamiId: null
+          });
+        }
+
+        // 2. KATA BOUTS (1 Kumite Group of 8-9 -> 2 Kata Sub-Groups A1 & A2 of 4-5 participants)
+        if (eventMode === 'kata' || eventMode === 'both') {
+          const halfLength = Math.ceil(groupParticipants.length / 2);
+          const kataSub1 = groupParticipants.slice(0, halfLength);
+          const kataSub2 = groupParticipants.slice(halfLength);
+
+          const kataSubs = [
+            { label: `${letter.toUpperCase()}1`, list: kataSub1 },
+            { label: `${letter.toUpperCase()}2`, list: kataSub2 }
+          ].filter(sub => sub.list.length > 0);
+
+          kataSubs.forEach((sub, subIdx) => {
+            const boutCode = `${cleanAgeCatCode}_kata_${letter}${subIdx + 1}`;
+            const boutName = `${bin.ageCat} - ${bin.gender} - ${bin.beltTier} - KATA (Group ${sub.label})`;
+
+            bouts.push({
+              id: 'bout_kata_' + Math.random().toString(36).substr(2, 9),
+              boutCode,
+              boutName,
+              eventType: 'Kata',
+              ageCategory: bin.ageCat,
+              gender: bin.gender,
+              beltTier: bin.beltTier,
+              participants: sub.list,
+              status: 'Pending',
+              tatamiId: null
+            });
+          });
+        }
       });
     });
 

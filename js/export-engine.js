@@ -23,6 +23,7 @@ const ExportEngine = {
         medalRows.push({
           'Bout Code': b.boutCode,
           'Category Name': b.boutName,
+          'Event Type': b.eventType || 'Kumite',
           'Age Category': b.ageCategory,
           'Gender': b.gender,
           'Belt Tier': b.beltTier,
@@ -45,51 +46,73 @@ const ExportEngine = {
     const statsMap = {};
 
     Object.values(brackets).forEach(br => {
-      br.matches.forEach(m => {
-        if (m.status === 'Completed' && m.score) {
-          const processParticipantStats = (p, isAao) => {
-            if (!p) return;
-            if (!statsMap[p.id]) {
-              statsMap[p.id] = {
-                'Name': p.name,
-                'Branch / Dojo': p.branch,
-                'Age': p.age,
-                'Gender': p.gender,
-                'Belt': p.beltLabel,
-                'Yuko (+1)': 0,
-                'Waza-ari (+2)': 0,
-                'Ippon (+3)': 0,
-                'Total Points': 0,
-                'Penalties': 0,
-                'Matches Played': 0,
-                'Matches Won': 0,
-                'Medal': ''
-              };
-            }
+      if (br.eventType === 'Kata' && br.competitors) {
+        br.competitors.forEach(c => {
+          if (!statsMap[c.id]) {
+            statsMap[c.id] = {
+              'Name': c.name,
+              'Branch / Dojo': c.branch,
+              'Age': c.age || '',
+              'Gender': br.gender,
+              'Belt': c.beltLabel || '',
+              'Event': 'Kata',
+              'Total Points / Score': c.totalScore || 0,
+              'Place': c.place ? `${c.place}` : 'Pending',
+              'Medal': ''
+            };
+          } else {
+            statsMap[c.id]['Total Points / Score'] = c.totalScore || 0;
+            statsMap[c.id]['Place'] = c.place ? `${c.place}` : 'Pending';
+          }
+        });
+      } else if (br.matches) {
+        br.matches.forEach(m => {
+          if (m.status === 'Completed' && m.score) {
+            const processParticipantStats = (p, isAao) => {
+              if (!p) return;
+              if (!statsMap[p.id]) {
+                statsMap[p.id] = {
+                  'Name': p.name,
+                  'Branch / Dojo': p.branch,
+                  'Age': p.age,
+                  'Gender': p.gender,
+                  'Belt': p.beltLabel,
+                  'Event': 'Kumite',
+                  'Yuko (+1)': 0,
+                  'Waza-ari (+2)': 0,
+                  'Ippon (+3)': 0,
+                  'Total Points / Score': 0,
+                  'Penalties': 0,
+                  'Matches Played': 0,
+                  'Matches Won': 0,
+                  'Medal': ''
+                };
+              }
 
-            const st = statsMap[p.id];
-            st['Matches Played'] += 1;
-            if (m.winner && m.winner.id === p.id) st['Matches Won'] += 1;
+              const st = statsMap[p.id];
+              st['Matches Played'] = (st['Matches Played'] || 0) + 1;
+              if (m.winner && m.winner.id === p.id) st['Matches Won'] = (st['Matches Won'] || 0) + 1;
 
-            if (isAao) {
-              st['Yuko (+1)'] += m.score.aaoYuko || 0;
-              st['Waza-ari (+2)'] += m.score.aaoWazaari || 0;
-              st['Ippon (+3)'] += m.score.aaoIppon || 0;
-              st['Total Points'] += m.score.aaoPoints || 0;
-              st['Penalties'] += m.score.aaoPenalties || 0;
-            } else {
-              st['Yuko (+1)'] += m.score.akaYuko || 0;
-              st['Waza-ari (+2)'] += m.score.akaWazaari || 0;
-              st['Ippon (+3)'] += m.score.akaIppon || 0;
-              st['Total Points'] += m.score.akaPoints || 0;
-              st['Penalties'] += m.score.akaPenalties || 0;
-            }
-          };
+              if (isAao) {
+                st['Yuko (+1)'] = (st['Yuko (+1)'] || 0) + (m.score.aaoYuko || 0);
+                st['Waza-ari (+2)'] = (st['Waza-ari (+2)'] || 0) + (m.score.aaoWazaari || 0);
+                st['Ippon (+3)'] = (st['Ippon (+3)'] || 0) + (m.score.aaoIppon || 0);
+                st['Total Points / Score'] = (st['Total Points / Score'] || 0) + (m.score.aaoPoints || 0);
+                st['Penalties'] = (st['Penalties'] || 0) + (m.score.aaoPenalties || 0);
+              } else {
+                st['Yuko (+1)'] = (st['Yuko (+1)'] || 0) + (m.score.akaYuko || 0);
+                st['Waza-ari (+2)'] = (st['Waza-ari (+2)'] || 0) + (m.score.akaWazaari || 0);
+                st['Ippon (+3)'] = (st['Ippon (+3)'] || 0) + (m.score.akaIppon || 0);
+                st['Total Points / Score'] = (st['Total Points / Score'] || 0) + (m.score.akaPoints || 0);
+                st['Penalties'] = (st['Penalties'] || 0) + (m.score.akaPenalties || 0);
+              }
+            };
 
-          processParticipantStats(m.aao, true);
-          processParticipantStats(m.aka, false);
-        }
-      });
+            processParticipantStats(m.aao, true);
+            processParticipantStats(m.aka, false);
+          }
+        });
+      }
 
       // Attach Medals
       const medals = br.medals || {};
@@ -102,27 +125,29 @@ const ExportEngine = {
     const participantSheet = XLSX.utils.json_to_sheet(Object.values(statsMap));
     XLSX.utils.book_append_sheet(wb, participantSheet, 'Participant Stats');
 
-    // 3. Sheet 3: Full Match Logs
+    // 3. Sheet 3: Full Match Logs (Kumite)
     const matchLogs = [];
     Object.values(brackets).forEach(br => {
-      br.matches.forEach(m => {
-        if (m.status === 'Completed') {
-          matchLogs.push({
-            'Bout Code': br.boutCode,
-            'Category': br.boutName,
-            'Match #': m.matchNumber,
-            'Round': m.roundName,
-            'AAO Fighter': m.aao ? m.aao.name : 'BYE',
-            'AAO Dojo': m.aao ? m.aao.branch : '',
-            'AKA Fighter': m.aka ? m.aka.name : 'BYE',
-            'AKA Dojo': m.aka ? m.aka.branch : '',
-            'AAO Score': m.score.aaoPoints || 0,
-            'AKA Score': m.score.akaPoints || 0,
-            'Winner': m.winner ? m.winner.name : 'Draw',
-            'Win Reason': m.score.winReason || ''
-          });
-        }
-      });
+      if (br.matches) {
+        br.matches.forEach(m => {
+          if (m.status === 'Completed') {
+            matchLogs.push({
+              'Bout Code': br.boutCode,
+              'Category': br.boutName,
+              'Match #': m.matchNumber,
+              'Round': m.roundName,
+              'AAO Fighter': m.aao ? m.aao.name : 'BYE',
+              'AAO Dojo': m.aao ? m.aao.branch : '',
+              'AKA Fighter': m.aka ? m.aka.name : 'BYE',
+              'AKA Dojo': m.aka ? m.aka.branch : '',
+              'AAO Score': m.score.aaoPoints || 0,
+              'AKA Score': m.score.akaPoints || 0,
+              'Winner': m.winner ? m.winner.name : 'Draw',
+              'Win Reason': m.score.winReason || ''
+            });
+          }
+        });
+      }
     });
 
     const logsSheet = XLSX.utils.json_to_sheet(matchLogs);

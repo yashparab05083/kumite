@@ -215,7 +215,7 @@ const BoutEditor = {
         ` : ''}
       </div>
 
-      ${this.generateBoutSheetHTML(bracket, isOrganizer)}
+      ${bracket.eventType === 'Kata' ? this.generateKataScoreSheetHTML(bracket, isOrganizer) : this.generateBoutSheetHTML(bracket, isOrganizer)}
     `;
 
     container.innerHTML = html;
@@ -510,8 +510,258 @@ const BoutEditor = {
   openAddParticipantModal(boutId) {
     const bracket = SyncService.state.brackets[boutId];
     if (!bracket) return;
-    const emptySlotIdx = bracket.slots.findIndex(s => s === null);
+    const emptySlotIdx = bracket.slots ? bracket.slots.findIndex(s => s === null) : -1;
     this.openSlotModal(boutId, emptySlotIdx !== -1 ? emptySlotIdx : 0);
+  },
+
+  generateKataScoreSheetHTML(bracket, isOrganizer) {
+    const competitors = bracket.competitors || [];
+    const medals = bracket.medals || {};
+    const tieBreaker = bracket.tieBreaker || {};
+
+    const goldName = medals.gold ? medals.gold.name : '_______';
+    const silverName = medals.silver ? medals.silver.name : '_______';
+    const bronze1Name = medals.bronze1 ? medals.bronze1.name : '_______';
+    const bronze2Name = medals.bronze2 ? medals.bronze2.name : '_______';
+
+    // 2-Way Flag Vote UI
+    let flagVoteCardHTML = '';
+    if (tieBreaker.flagVote && !tieBreaker.flagVote.winnerId) {
+      const tiedComps = competitors.filter(c => tieBreaker.flagVote.tiedIds.includes(c.id));
+      if (tiedComps.length === 2) {
+        flagVoteCardHTML = `
+          <div class="card border-warning my-3 p-3 bg-light print-hide shadow-sm">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h6 class="fw-bold text-dark m-0">⚠️ 2-WAY TIE DETECTED FOR MEDAL POSITION</h6>
+              <span class="badge bg-warning text-dark">Flag Vote Required</span>
+            </div>
+            <p class="small text-muted mb-2">Referees cast AKA or AAO flag vote to break tie between <strong>${tiedComps[0].name}</strong> and <strong>${tiedComps[1].name}</strong>:</p>
+            <div class="d-flex gap-3 justify-content-center">
+              <button class="btn btn-danger fw-bold px-4" onclick="BoutEditor.castKataFlagVote('${bracket.boutId}', '${tiedComps[0].id}')">
+                🔴 VOTE AKA: ${tiedComps[0].name}
+              </button>
+              <button class="btn btn-primary fw-bold px-4" onclick="BoutEditor.castKataFlagVote('${bracket.boutId}', '${tiedComps[1].id}')">
+                🔵 VOTE AAO: ${tiedComps[1].name}
+              </button>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    // 3+ Way Re-Score Round UI
+    let rescoreRoundHTML = '';
+    if (tieBreaker.rescoreRound) {
+      const rescoreComps = tieBreaker.rescoreRound.competitors || [];
+      rescoreRoundHTML = `
+        <div class="card border-danger my-3 p-3 bg-white shadow-sm">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="fw-bold text-danger m-0">🔥 3+ WAY TIE - RE-SCORING ROUND (TIED CONTESTANTS ONLY)</h6>
+            <span class="badge bg-danger">Scoped Re-Score</span>
+          </div>
+          <table class="table table-sm table-bordered align-middle text-center mb-0">
+            <thead class="table-dark">
+              <tr>
+                <th style="width: 50px;">NO.</th>
+                <th>TIED COMPETITOR NAME</th>
+                <th style="width: 75px;">REF 1</th>
+                <th style="width: 75px;">REF 2</th>
+                <th style="width: 75px;">REF 3</th>
+                <th style="width: 75px;">REF 4</th>
+                <th style="width: 75px;">REF 5</th>
+                <th style="width: 90px;">RE-TOTAL</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rescoreComps.map((rc, idx) => `
+                <tr>
+                  <td class="fw-bold">${idx + 1}</td>
+                  <td class="text-start fw-bold">${rc.name} <small class="text-muted">(${rc.branch || 'Dojo'})</small></td>
+                  ${[0, 1, 2, 3, 4].map(refIdx => `
+                    <td>
+                      ${isOrganizer ? `
+                        <input type="number" step="0.1" min="0" max="10" class="form-control form-control-sm text-center py-0" 
+                          value="${rc.scores[refIdx] || ''}" 
+                          onchange="BoutEditor.updateKataRescore('${bracket.boutId}', '${rc.id}', ${refIdx}, this.value)">
+                      ` : `
+                        <span>${rc.scores[refIdx] ? rc.scores[refIdx].toFixed(1) : '-'}</span>
+                      `}
+                    </td>
+                  `).join('')}
+                  <td class="fw-bold text-danger fs-6">${rc.totalScore ? rc.totalScore.toFixed(2) : '0.00'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    // Official Score Sheet Printed Rows (Pad up to 12 rows for clear print layout)
+    const displayRows = [...competitors];
+    while (displayRows.length < 12) {
+      displayRows.push(null);
+    }
+
+    return `
+      <div class="bout-sheet-printable shadow-sm p-3 bg-white text-dark rounded">
+        <!-- Sheet Header -->
+        <div class="text-center border-bottom pb-2 mb-2">
+          <h3 class="fw-bold tracking-wide m-0">SHOTOKAN KARATE CHAMPIONSHIP</h3>
+          <h5 class="fw-bold text-danger m-0 mt-1">OFFICIAL KATA SCORE SHEET</h5>
+          <div class="row g-1 text-start fw-bold mt-2" style="font-size: 0.9rem;">
+            <div class="col-md-3">Age/Category: <span class="text-primary">${bracket.boutName}</span></div>
+            <div class="col-md-3">Arena No: <span class="text-primary">Tatami ${bracket.tatamiId || 'Unassigned'}</span></div>
+            <div class="col-md-3">Belt Category: <span class="text-primary">${bracket.beltTier}</span></div>
+            <div class="col-md-3">Gender: <span class="text-primary">${bracket.gender}</span></div>
+          </div>
+        </div>
+
+        ${flagVoteCardHTML}
+        ${rescoreRoundHTML}
+
+        <!-- Main Kata Table -->
+        <div class="table-responsive my-2">
+          <table class="table table-bordered table-sm align-middle text-center mb-0" style="font-size: 0.88rem;">
+            <thead class="table-light">
+              <tr class="fw-bold">
+                <th style="width: 45px;">NO.</th>
+                <th class="text-start">NAME OF PARTICIPANT</th>
+                <th style="width: 75px;">REF 1</th>
+                <th style="width: 75px;">REF 2</th>
+                <th style="width: 75px;">REF 3</th>
+                <th style="width: 75px;">REF 4</th>
+                <th style="width: 75px;">REF 5</th>
+                <th style="width: 85px;">TOTAL</th>
+                <th style="width: 75px;">PLACE</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${displayRows.map((comp, idx) => {
+                if (!comp) {
+                  return `
+                    <tr style="height: 32px;">
+                      <td class="text-muted fs-7">${idx + 1}</td>
+                      <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+                    </tr>
+                  `;
+                }
+
+                const placeLabel = comp.place ? (
+                  comp.place === 1 ? '🥇 1st' :
+                  comp.place === 2 ? '🥈 2nd' :
+                  comp.place === 3 ? '🥉 3rd' :
+                  comp.place === 4 ? '🥉 3rd' : `${comp.place}th`
+                ) : '-';
+
+                const placeClass = comp.place ? (comp.place <= 2 ? 'fw-bold text-success' : (comp.place <= 4 ? 'fw-bold text-warning text-dark' : '')) : '';
+
+                return `
+                  <tr>
+                    <td class="fw-bold">${idx + 1}</td>
+                    <td class="text-start">
+                      <span class="fw-bold">${comp.name}</span>
+                      <small class="text-muted ms-1">(${comp.branch || 'Dojo'})</small>
+                    </td>
+                    ${[0, 1, 2, 3, 4].map(refIdx => `
+                      <td>
+                        ${isOrganizer ? `
+                          <input type="number" step="0.1" min="0" max="10" class="form-control form-control-sm text-center py-0 px-1 fs-7"
+                            value="${comp.scores[refIdx] || ''}" 
+                            onchange="BoutEditor.updateKataScore('${bracket.boutId}', '${comp.id}', ${refIdx}, this.value)">
+                        ` : `
+                          <span class="fw-semibold">${comp.scores[refIdx] ? comp.scores[refIdx].toFixed(1) : '-'}</span>
+                        `}
+                      </td>
+                    `).join('')}
+                    <td class="fw-bold fs-6 text-primary">${comp.totalScore ? comp.totalScore.toFixed(2) : '0.00'}</td>
+                    <td class="${placeClass} fs-6">${placeLabel}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- MEDALS & REFEREES FOOTER -->
+        <div class="border-top mt-3 pt-2">
+          <div class="row text-center fw-bold fs-6 mb-2">
+            <div class="col-3 text-warning">🥇 GOLD: <span class="text-dark">${goldName}</span></div>
+            <div class="col-3 text-secondary">🥈 SILVER: <span class="text-dark">${silverName}</span></div>
+            <div class="col-3 text-danger">🥉 BRONZE 1: <span class="text-dark">${bronze1Name}</span></div>
+            <div class="col-3 text-danger">🥉 BRONZE 2: <span class="text-dark">${bronze2Name}</span></div>
+          </div>
+          <div class="d-flex justify-content-between text-muted fs-7 border-top pt-2">
+            <span>Referee 1: ____________</span>
+            <span>Referee 2: ____________</span>
+            <span>Referee 3: ____________</span>
+            <span>Referee 4: ____________</span>
+            <span>Referee 5: ____________</span>
+          </div>
+        </div>
+      </div>
+    `;
+  },
+
+  updateKataScore(boutId, compId, refIndex, val) {
+    const bracket = SyncService.state.brackets[boutId];
+    if (!bracket || bracket.eventType !== 'Kata') return;
+
+    const comp = bracket.competitors.find(c => c.id === compId);
+    if (!comp) return;
+
+    const scoreNum = parseFloat(val) || 0;
+    comp.scores[refIndex] = scoreNum;
+
+    BracketEngine.recalculateKataRanks(bracket);
+    SyncService.checkBoutCompletion(boutId);
+    SyncService.saveToLocal();
+    this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
+  },
+
+  castKataFlagVote(boutId, winnerId) {
+    const bracket = SyncService.state.brackets[boutId];
+    if (!bracket || bracket.eventType !== 'Kata' || !bracket.tieBreaker.flagVote) return;
+
+    bracket.tieBreaker.flagVote.winnerId = winnerId;
+    BracketEngine.recalculateKataRanks(bracket);
+    SyncService.checkBoutCompletion(boutId);
+    SyncService.saveToLocal();
+    this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
+  },
+
+  updateKataRescore(boutId, compId, refIndex, val) {
+    const bracket = SyncService.state.brackets[boutId];
+    if (!bracket || bracket.eventType !== 'Kata' || !bracket.tieBreaker.rescoreRound) return;
+
+    const rescoreComp = bracket.tieBreaker.rescoreRound.competitors.find(c => c.id === compId);
+    if (!rescoreComp) return;
+
+    const scoreNum = parseFloat(val) || 0;
+    rescoreComp.scores[refIndex] = scoreNum;
+
+    const sum = rescoreComp.scores.reduce((acc, v) => acc + (parseFloat(v) || 0), 0);
+    rescoreComp.totalScore = Math.round(sum * 100) / 100;
+
+    // Rank tied competitors based on rescore total
+    const sortedRescores = [...bracket.tieBreaker.rescoreRound.competitors].sort((a, b) => b.totalScore - a.totalScore);
+    const mainTiedComps = bracket.competitors.filter(c => bracket.tieBreaker.rescoreRound.tiedIds.includes(c.id));
+    const basePlace = mainTiedComps.reduce((min, c) => Math.min(min, c.place || 1), 99);
+
+    sortedRescores.forEach((rc, idx) => {
+      const mainComp = bracket.competitors.find(c => c.id === rc.id);
+      if (mainComp) {
+        mainComp.place = basePlace + idx;
+        if (mainComp.place === 1) bracket.medals.gold = mainComp;
+        else if (mainComp.place === 2) bracket.medals.silver = mainComp;
+        else if (mainComp.place === 3) bracket.medals.bronze1 = mainComp;
+        else if (mainComp.place === 4) bracket.medals.bronze2 = mainComp;
+      }
+    });
+
+    SyncService.checkBoutCompletion(boutId);
+    SyncService.saveToLocal();
+    this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
   }
 };
 

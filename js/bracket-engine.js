@@ -24,6 +24,10 @@ const BracketEngine = {
   ],
 
   createBracket(bout) {
+    if (bout.eventType === 'Kata') {
+      return this.createKataBracket(bout);
+    }
+
     const rawParticipants = [...bout.participants];
     const seededList = this.applyBranchSeparation(rawParticipants);
     const slots = Array(16).fill(null);
@@ -322,6 +326,151 @@ const BracketEngine = {
     if (finalMatch.status === 'Completed' && finalMatch.winner) {
       bracket.medals.gold = finalMatch.winner;
       bracket.medals.silver = finalMatch.loser;
+    }
+  },
+
+  // --- KATA SCORING & TIE-BREAKER ENGINE ---
+
+  createKataBracket(bout) {
+    const rawParticipants = [...bout.participants];
+    const competitors = rawParticipants.map((p, idx) => ({
+      id: p.id,
+      no: idx + 1,
+      name: p.name,
+      branch: p.branch,
+      age: p.age,
+      beltLabel: p.beltLabel,
+      scores: [0, 0, 0, 0, 0],
+      totalScore: 0,
+      place: null
+    }));
+
+    const bracket = {
+      id: bout.id,
+      boutId: bout.id,
+      boutCode: bout.boutCode,
+      boutName: bout.boutName,
+      eventType: 'Kata',
+      ageCategory: bout.ageCategory,
+      gender: bout.gender,
+      beltTier: bout.beltTier,
+      competitors,
+      medals: { gold: null, silver: null, bronze1: null, bronze2: null },
+      referees: ['Referee 1', 'Referee 2', 'Referee 3', 'Referee 4', 'Referee 5'],
+      tieBreaker: {
+        flagVote: null,
+        rescoreRound: null
+      }
+    };
+
+    this.recalculateKataRanks(bracket);
+    return bracket;
+  },
+
+  recalculateKataRanks(bracket) {
+    if (!bracket || bracket.eventType !== 'Kata') return;
+
+    bracket.competitors.forEach(comp => {
+      if (Array.isArray(comp.scores)) {
+        const sum = comp.scores.reduce((acc, val) => acc + (parseFloat(val) || 0), 0);
+        comp.totalScore = Math.round(sum * 100) / 100;
+      } else {
+        comp.totalScore = 0;
+      }
+    });
+
+    const activeScored = bracket.competitors.filter(c => c.totalScore > 0);
+
+    // Reset places and medals
+    bracket.competitors.forEach(c => c.place = null);
+    bracket.medals = { gold: null, silver: null, bronze1: null, bronze2: null };
+    if (!bracket.tieBreaker) {
+      bracket.tieBreaker = { flagVote: null, rescoreRound: null };
+    }
+
+    if (activeScored.length === 0) return;
+
+    // Group active scored by totalScore
+    const scoreBins = {};
+    activeScored.forEach(c => {
+      const scoreKey = c.totalScore.toFixed(2);
+      if (!scoreBins[scoreKey]) scoreBins[scoreKey] = [];
+      scoreBins[scoreKey].push(c);
+    });
+
+    const sortedKeys = Object.keys(scoreBins).map(Number).sort((a, b) => b - a);
+
+    let currentRank = 1;
+    const flagWinnerId = bracket.tieBreaker.flagVote ? bracket.tieBreaker.flagVote.winnerId : null;
+
+    sortedKeys.forEach(scoreKey => {
+      const bin = scoreBins[scoreKey.toFixed(2)];
+      
+      if (bin.length === 1) {
+        const c = bin[0];
+        c.place = currentRank;
+        if (currentRank === 1) bracket.medals.gold = c;
+        else if (currentRank === 2) bracket.medals.silver = c;
+        else if (currentRank === 3) bracket.medals.bronze1 = c;
+        else if (currentRank === 4) bracket.medals.bronze2 = c;
+        currentRank += 1;
+      } else if (bin.length === 2) {
+        // 2-Participant Tie for Medal position
+        if (flagWinnerId && bin.some(c => c.id === flagWinnerId)) {
+          const winner = bin.find(c => c.id === flagWinnerId);
+          const loser = bin.find(c => c.id !== flagWinnerId);
+          winner.place = currentRank;
+          loser.place = currentRank + 1;
+          
+          if (currentRank === 1) { bracket.medals.gold = winner; bracket.medals.silver = loser; }
+          else if (currentRank === 2) { bracket.medals.silver = winner; bracket.medals.bronze1 = loser; }
+          else if (currentRank === 3) { bracket.medals.bronze1 = winner; bracket.medals.bronze2 = loser; }
+          currentRank += 2;
+        } else {
+          bin.forEach(c => c.place = currentRank);
+          if (currentRank <= 2) {
+            bracket.tieBreaker.flagVote = {
+              type: '2WAY_FLAG',
+              tiedIds: bin.map(c => c.id),
+              winnerId: null
+            };
+          } else {
+            // Bronze tie is allowed (dual 3rd place)
+            if (currentRank === 3) {
+              bracket.medals.bronze1 = bin[0];
+              bracket.medals.bronze2 = bin[1];
+            }
+          }
+          currentRank += 2;
+        }
+      } else if (bin.length >= 3) {
+        // 3+ Way Tie: Re-score ONLY for tied contestants
+        bin.forEach(c => c.place = currentRank);
+        if (currentRank <= 3 && !bracket.tieBreaker.rescoreRound) {
+          bracket.tieBreaker.rescoreRound = {
+            type: '3WAY_RESCORE',
+            tiedIds: bin.map(c => c.id),
+            competitors: bin.map((c, i) => ({
+              id: c.id,
+              no: i + 1,
+              name: c.name,
+              branch: c.branch,
+              scores: [0, 0, 0, 0, 0],
+              totalScore: 0,
+              place: null
+            }))
+          };
+        }
+        currentRank += bin.length;
+      }
+    });
+
+    // Fallback dual bronze if unassigned
+    if (!bracket.medals.bronze1 && activeScored.length >= 3) {
+      bracket.medals.bronze1 = activeScored[2] || null;
+    }
+    if (!bracket.medals.bronze2 && activeScored.length >= 4) {
+      bracket.medals.bronze2 = activeScored[3] || null;
     }
   }
 };

@@ -179,13 +179,27 @@ const SyncService = {
     const bracket = this.state.brackets[boutId];
     if (!bout || !bracket) return;
 
-    const finalMatch = bracket.matches[14]; // Match #15 (Final)
-    const allMatchesResolved = bracket.matches.every(m => m.status === 'Completed' || m.status === 'Empty');
+    if (bracket.eventType === 'Kata') {
+      const activeScored = bracket.competitors.filter(c => c.totalScore > 0);
+      const allScored = activeScored.length > 0 && activeScored.length === bracket.competitors.length;
+      const isFlagPending = bracket.tieBreaker && bracket.tieBreaker.flagVote && !bracket.tieBreaker.flagVote.winnerId;
+      const isRescorePending = bracket.tieBreaker && bracket.tieBreaker.rescoreRound && bracket.tieBreaker.rescoreRound.competitors.some(c => c.totalScore === 0);
+
+      if (allScored && !isFlagPending && !isRescorePending) {
+        bout.status = 'Completed';
+      } else {
+        bout.status = activeScored.length > 0 ? 'In Progress' : (bout.tatamiId ? 'Assigned' : 'Pending');
+      }
+      return;
+    }
+
+    const finalMatch = bracket.matches ? bracket.matches[14] : null; // Match #15 (Final)
+    const allMatchesResolved = bracket.matches && bracket.matches.every(m => m.status === 'Completed' || m.status === 'Empty');
 
     if ((finalMatch && finalMatch.status === 'Completed') || allMatchesResolved) {
       bout.status = 'Completed';
     } else {
-      const anyStarted = bracket.matches.some(m => m.status === 'Completed');
+      const anyStarted = bracket.matches && bracket.matches.some(m => m.status === 'Completed');
       bout.status = anyStarted ? 'In Progress' : (bout.tatamiId ? 'Assigned' : 'Pending');
     }
   },

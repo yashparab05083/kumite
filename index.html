@@ -274,6 +274,14 @@
             </div>
             <div class="card-body">
               <p class="text-muted small mb-2">Select your participant Excel sheet containing Name, Gender, Age, Belt, Dojo, Instructor, and School Hours.</p>
+              <div class="mb-2">
+                <label class="form-label small fw-bold mb-1 text-primary">Select Tournament Event Mode:</label>
+                <select id="eventModeSelect" class="form-select form-select-sm mb-2 fw-bold text-primary border-primary">
+                  <option value="both" selected>🥋 Both Events (Kumite & Kata)</option>
+                  <option value="kumite">🥊 Kumite Only</option>
+                  <option value="kata">🎯 Kata Only</option>
+                </select>
+              </div>
               <input type="file" id="excelFileInput" class="form-control mb-3" accept=".xlsx, .xls">
               <div id="importStatus" class="fw-bold text-success"></div>
             </div>
