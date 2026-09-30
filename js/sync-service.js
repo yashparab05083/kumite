@@ -178,6 +178,16 @@ const SyncService = {
     const tatami = this.state.tatamis.find(t => t.id === tatamiId);
     if (!tatami) return;
 
+    // Clean up assignment from any previous tatami
+    this.state.tatamis.forEach(t => {
+      if (t.assignedBoutIds && Array.isArray(t.assignedBoutIds)) {
+        const idx = t.assignedBoutIds.indexOf(boutId);
+        if (idx !== -1 && t.id !== tatamiId) {
+          t.assignedBoutIds.splice(idx, 1);
+        }
+      }
+    });
+
     if (!tatami.assignedBoutIds || !Array.isArray(tatami.assignedBoutIds)) {
       tatami.assignedBoutIds = [];
     }
@@ -185,6 +195,8 @@ const SyncService = {
     if (tatami.assignedBoutIds.indexOf(boutId) === -1) {
       tatami.assignedBoutIds.push(boutId);
     }
+
+    const bout = this.state.bouts.find(b => b.id === boutId);
     if (bout) {
       bout.tatamiId = tatamiId;
       if (bout.status !== 'Completed') {
@@ -192,6 +204,34 @@ const SyncService = {
       }
     }
 
+    const bracket = this.state.brackets[boutId];
+    if (bracket) {
+      bracket.tatamiId = tatamiId;
+    }
+
+    this.saveToLocal();
+  },
+
+  unassignBoutFromTatami(boutId) {
+    const bout = this.state.bouts.find(b => b.id === boutId);
+    if (bout) {
+      const oldTatamiId = bout.tatamiId;
+      bout.tatamiId = null;
+      if (bout.status === 'Assigned') {
+        bout.status = 'Pending';
+      }
+      if (oldTatamiId) {
+        const tatami = this.state.tatamis.find(t => t.id === oldTatamiId);
+        if (tatami && tatami.assignedBoutIds) {
+          const idx = tatami.assignedBoutIds.indexOf(boutId);
+          if (idx !== -1) tatami.assignedBoutIds.splice(idx, 1);
+        }
+      }
+    }
+    const bracket = this.state.brackets[boutId];
+    if (bracket) {
+      bracket.tatamiId = null;
+    }
     this.saveToLocal();
   },
 
