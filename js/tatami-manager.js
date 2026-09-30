@@ -77,15 +77,23 @@ const TatamiManager = {
           <div class="row g-3">
             ${assignedBouts.map(b => {
               const bracket = SyncService.state.brackets[b.id];
-              const pendingMatches = bracket ? bracket.matches.filter(m => m.status === 'Scheduled').length : 0;
+              const isKata = b.eventType === 'Kata' || (bracket && bracket.eventType === 'Kata');
+              let matchCountText = '';
+              if (isKata) {
+                const count = bracket && bracket.competitors ? bracket.competitors.length : (b.participants ? b.participants.length : 0);
+                matchCountText = `${count} Kata Competitors`;
+              } else {
+                const pendingCount = bracket && bracket.matches ? bracket.matches.filter(m => m.status === 'Scheduled').length : 0;
+                matchCountText = `${pendingCount} Matches Scheduled`;
+              }
               return `
                 <div class="col-md-4">
                   <div class="card border-primary h-100">
                     <div class="card-body">
                       <h5 class="card-title fw-bold">${b.boutName}</h5>
                       <p class="card-text text-muted mb-2">Category: ${b.ageCategory} | ${b.gender} | ${b.beltTier}</p>
-                      <p class="card-text mb-2"><span class="badge bg-warning text-dark">${pendingMatches} Matches Ready</span></p>
-                      <button class="btn btn-success w-100 fw-bold" onclick="TatamiManager.loadBoutForRing(${tatami.id}, '${b.id}')">Open Bout Bracket</button>
+                      <p class="card-text mb-2"><span class="badge bg-warning text-dark">${matchCountText}</span></p>
+                      <button class="btn btn-success w-100 fw-bold" onclick="TatamiManager.loadBoutForRing(${tatami.id}, '${b.id}')">Open Bout Sheet</button>
                     </div>
                   </div>
                 </div>
@@ -177,7 +185,7 @@ const TatamiManager = {
     `;
 
     document.getElementById('modalContainer').innerHTML = modalHtml;
-    const modal = new bootstrap.Modal(document.getElementById('assignBoutModal'));
+    const modal = new bootstrap.Modal(document.getElementById('assignBoutModal'), { focus: false });
     modal.show();
   },
 
@@ -190,7 +198,7 @@ const TatamiManager = {
 
     const modalEl = document.getElementById('assignBoutModal');
     if (modalEl) {
-      const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+      const modal = bootstrap.Modal.getInstance(modalEl);
       if (modal) { try { modal.hide(); } catch(e) {} }
     }
     setTimeout(() => {
@@ -219,7 +227,7 @@ const TatamiManager = {
 
     const modalEl = document.getElementById('assignBoutModal');
     if (modalEl) {
-      const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+      const modal = bootstrap.Modal.getInstance(modalEl);
       if (modal) { try { modal.hide(); } catch(e) {} }
     }
     setTimeout(() => {
@@ -244,7 +252,7 @@ const TatamiManager = {
     const bracket = SyncService.state.brackets[boutId];
     if (!bracket) return;
 
-    const firstScheduled = bracket.matches.find(m => m.status === 'Scheduled');
+    const firstScheduled = bracket.matches ? bracket.matches.find(m => m.status === 'Scheduled') : null;
     const activeMatchNum = firstScheduled ? firstScheduled.matchNumber : 1;
 
     SyncService.setActiveTatamiMatch(tatamiId, boutId, activeMatchNum);
