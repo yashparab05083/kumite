@@ -359,7 +359,9 @@ const BracketEngine = {
 
   createKataBracket(bout) {
     const rawParticipants = [...bout.participants];
-    const competitors = rawParticipants.map((p, idx) => ({
+    const interleavedParticipants = this.interleaveKataBranchParticipants(rawParticipants);
+
+    const competitors = interleavedParticipants.map((p, idx) => ({
       id: p.id,
       no: idx + 1,
       name: p.name,
@@ -391,6 +393,34 @@ const BracketEngine = {
 
     this.recalculateKataRanks(bracket);
     return bracket;
+  },
+
+  interleaveKataBranchParticipants(participants) {
+    if (!participants || participants.length <= 2) return [...participants];
+
+    const branchMap = {};
+    participants.forEach(p => {
+      const b = (p.branch || 'Unknown').trim();
+      if (!branchMap[b]) branchMap[b] = [];
+      branchMap[b].push(p);
+    });
+
+    const sortedBranches = Object.keys(branchMap).sort((a, b) => branchMap[b].length - branchMap[a].length);
+
+    const result = [];
+    while (result.length < participants.length) {
+      let added = false;
+      for (let i = 0; i < sortedBranches.length; i++) {
+        const b = sortedBranches[i];
+        if (branchMap[b].length > 0) {
+          result.push(branchMap[b].shift());
+          added = true;
+        }
+      }
+      if (!added) break;
+    }
+
+    return result;
   },
 
   recalculateKataRanks(bracket) {

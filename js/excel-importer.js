@@ -309,16 +309,18 @@ const ExcelImporter = {
 
           if (orderedBeltList.length >= 8) {
             const numDedicated = Math.ceil(orderedBeltList.length / 8);
-            const groupSize = Math.ceil(orderedBeltList.length / numDedicated);
+            const distributedLists = this.distributeParticipantsWithBranchSeparation(orderedBeltList, numDedicated);
 
-            for (let i = 0; i < orderedBeltList.length; i += groupSize) {
-              candidateGroups.push({
-                beltLabel: this.getBeltLabel(bCode),
-                tierName: tierName,
-                isSingleBelt: true,
-                list: orderedBeltList.slice(i, i + groupSize)
-              });
-            }
+            distributedLists.forEach(subList => {
+              if (subList && subList.length > 0) {
+                candidateGroups.push({
+                  beltLabel: this.getBeltLabel(bCode),
+                  tierName: tierName,
+                  isSingleBelt: true,
+                  list: subList
+                });
+              }
+            });
           } else {
             candidateGroups.push({
               beltLabel: this.getBeltLabel(bCode),
@@ -395,11 +397,9 @@ const ExcelImporter = {
             });
           }
 
-          // 2. KATA BOUT (1 Kumite Group -> 2 Kata Sub-Groups A1 & A2)
+          // 2. KATA BOUT (1 Kumite Group -> 2 Kata Sub-Groups A1 & A2 with Strict Branch Separation)
           if (eventMode === 'kata' || eventMode === 'both') {
-            const halfLength = Math.ceil(mGroup.list.length / 2);
-            const kataSub1 = mGroup.list.slice(0, halfLength);
-            const kataSub2 = mGroup.list.slice(halfLength);
+            const [kataSub1, kataSub2] = this.splitKataSubgroupsWithBranchSeparation(mGroup.list);
 
             const kataSubs = [
               { label: `${letter.toUpperCase()}1`, list: kataSub1 },
@@ -429,6 +429,102 @@ const ExcelImporter = {
     });
 
     return bouts;
+  },
+
+  distributeParticipantsWithBranchSeparation(list, numGroups) {
+    if (!list || list.length === 0) return [];
+    if (numGroups <= 1) return [[...list]];
+
+    const branchMap = {};
+    list.forEach(p => {
+      const b = (p.branch || 'Unknown').trim();
+      if (!branchMap[b]) branchMap[b] = [];
+      branchMap[b].push(p);
+    });
+
+    const sortedBranches = Object.keys(branchMap).sort((a, b) => branchMap[b].length - branchMap[a].length);
+
+    const groups = Array.from({ length: numGroups }, () => []);
+    const branchCountsInGroup = Array.from({ length: numGroups }, () => ({}));
+
+    sortedBranches.forEach(branch => {
+      const branchParticipants = branchMap[branch];
+      const schoolKids = branchParticipants.filter(p => p.schoolHours);
+      const regularKids = branchParticipants.filter(p => !p.schoolHours);
+      const ordered = [...schoolKids, ...regularKids];
+
+      ordered.forEach(p => {
+        let bestGroupIdx = 0;
+        let minBranchCount = Infinity;
+        let minTotalSize = Infinity;
+
+        for (let g = 0; g < numGroups; g++) {
+          const bCount = branchCountsInGroup[g][branch] || 0;
+          const totalSize = groups[g].length;
+
+          if (bCount < minBranchCount) {
+            minBranchCount = bCount;
+            minTotalSize = totalSize;
+            bestGroupIdx = g;
+          } else if (bCount === minBranchCount) {
+            if (totalSize < minTotalSize) {
+              minTotalSize = totalSize;
+              bestGroupIdx = g;
+            }
+          }
+        }
+
+        groups[bestGroupIdx].push(p);
+        branchCountsInGroup[bestGroupIdx][branch] = (branchCountsInGroup[bestGroupIdx][branch] || 0) + 1;
+      });
+    });
+
+    return groups;
+  },
+
+  splitKataSubgroupsWithBranchSeparation(list) {
+    if (!list || list.length === 0) return [[], []];
+
+    const branchMap = {};
+    list.forEach(p => {
+      const b = (p.branch || 'Unknown').trim();
+      if (!branchMap[b]) branchMap[b] = [];
+      branchMap[b].push(p);
+    });
+
+    const sortedBranches = Object.keys(branchMap).sort((a, b) => branchMap[b].length - branchMap[a].length);
+
+    const sub1 = [];
+    const sub2 = [];
+    const sub1BranchCounts = {};
+    const sub2BranchCounts = {};
+
+    sortedBranches.forEach(branch => {
+      const branchParticipants = branchMap[branch];
+      branchParticipants.forEach((p) => {
+        const c1 = sub1BranchCounts[branch] || 0;
+        const c2 = sub2BranchCounts[branch] || 0;
+
+        let chooseSub1 = false;
+        if (c1 < c2) {
+          chooseSub1 = true;
+        } else if (c2 < c1) {
+          chooseSub1 = false;
+        } else {
+          chooseSub1 = sub1.length <= sub2.length;
+        }
+
+        if (chooseSub1) {
+          sub1.push(p);
+          sub1BranchCounts[branch] = c1 + 1;
+        } else {
+          sub2.push(p);
+          sub2BranchCounts[branch] = c2 + 1;
+        }
+      });
+    });
+
+    return [sub1, sub2];
   }
 };
 

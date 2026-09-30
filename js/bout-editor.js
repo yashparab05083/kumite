@@ -984,7 +984,7 @@ const BoutEditor = {
 
     bootstrap.Modal.getInstance(document.getElementById('kataCompetitorModal')).hide();
     SyncService.saveToLocal();
-    this.renderBoutSheet(sourceBoutId, 'activeBoutDiagramContainer');
+    this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
   },
 
   confirmAddKataCompetitor(boutId) {
