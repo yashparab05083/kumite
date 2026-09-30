@@ -6,8 +6,10 @@ const ExcelImporter = {
   cleanParticipantName(str) {
     if (str === undefined || str === null) return '';
     return String(str)
-      .replace(/^[\s\(\[\{]*[YNyn][\s\)\]\}]*[-\/:\s]*/i, '') // Strips leading (Y), (N), Y -, N -, (y), (n), etc.
-      .replace(/[\s\(\[\{]+[YNyn][\s\)\]\}]*$/i, '')           // Strips trailing (Y), (N), (y), (n), etc.
+      .replace(/^\s*[\(\[\{]\s*[YNyn]\s*[\)\]\}]\s*/i, '') // Strips leading (Y), (N), [Y], [N], etc.
+      .replace(/^\s*[YNyn]\s*[-\/:;]\s*/i, '')             // Strips leading Y -, N -, Y:, N:, etc.
+      .replace(/\s*[\(\[\{]\s*[YNyn]\s*[\)\]\}]\s*$/i, '') // Strips trailing (Y), (N), [Y], [N], etc.
+      .replace(/\s*[-\/:;]\s*[YNyn]\s*$/i, '')             // Strips trailing - Y, - N, etc.
       .trim();
   },
 
@@ -241,7 +243,7 @@ const ExcelImporter = {
     return '18 Years & Above';
   },
 
-  // Auto-generate Bout Groups from Participant List (Same Belt Priority -> Tier Fallback -> Kumite 8-9 & Kata 1-to-2 Alignment)
+  // Auto-generate Bout Groups from Participant List (Kata Bouts First -> Kumite Bouts Second -> Min 4 per Bout, Min 3 if no option)
   generateBoutGroups(participants, eventMode = 'both') {
     // Step 1: Group by Age Category & Gender
     const ageGenderBins = {};
@@ -267,7 +269,8 @@ const ExcelImporter = {
       const pList = agBin.participants;
       if (!pList || pList.length === 0) return;
 
-      // Step 2: Group by Belt Tier (Beginner, Intermediate, Advanced, Black Belt)
+      // Group by Belt Tier (Beginner, Intermediate, Advanced, Black Belt)
+      const tierOrder = ['Beginner', 'Intermediate', 'Advanced', 'Black Belt'];
       const tierBins = {
         'Beginner': [],
         'Intermediate': [],
@@ -281,8 +284,10 @@ const ExcelImporter = {
         tierBins[tier].push(p);
       });
 
-      // Process each Belt Tier
-      Object.keys(tierBins).forEach(tierName => {
+      // Build initial raw group list per tier
+      let rawTierGroups = [];
+
+      tierOrder.forEach(tierName => {
         const tierList = tierBins[tierName];
         if (!tierList || tierList.length === 0) return;
 
@@ -294,15 +299,10 @@ const ExcelImporter = {
           exactBeltMap[bCode].push(p);
         });
 
-        // Sort exact belts (e.g. Kyu 9 White first, down to Kyu 1 Brown)
         const sortedBeltCodes = Object.keys(exactBeltMap).map(Number).sort((a, b) => b - a);
-
-        // Construct contiguous candidate groups trying to keep same belts together
-        let candidateGroups = [];
 
         sortedBeltCodes.forEach(bCode => {
           const bList = exactBeltMap[bCode];
-          // Sort school hours kids first within exact belt
           const schoolKids = bList.filter(p => p.schoolHours);
           const regularKids = bList.filter(p => !p.schoolHours);
           const orderedBeltList = [...schoolKids, ...regularKids];
@@ -313,119 +313,163 @@ const ExcelImporter = {
 
             distributedLists.forEach(subList => {
               if (subList && subList.length > 0) {
-                candidateGroups.push({
+                rawTierGroups.push({
+                  tierName,
                   beltLabel: this.getBeltLabel(bCode),
-                  tierName: tierName,
-                  isSingleBelt: true,
+                  beltLabelsSet: new Set([this.getBeltLabel(bCode)]),
                   list: subList
                 });
               }
             });
           } else {
-            candidateGroups.push({
+            rawTierGroups.push({
+              tierName,
               beltLabel: this.getBeltLabel(bCode),
-              tierName: tierName,
-              isSingleBelt: true,
+              beltLabelsSet: new Set([this.getBeltLabel(bCode)]),
               list: orderedBeltList
             });
           }
         });
+      });
 
-        // Merge smaller candidate groups within the same tier so group sizes target 8-9 (max 9)
-        const mergedKumiteGroups = [];
-        let currentAccumulator = [];
-        let currentBeltLabels = new Set();
+      // Merge small groups so NO group has 1 or 2 participants (Target min 4 per bout, min 3 if no option)
+      const mergedKumiteGroups = [];
+      let accumulator = [];
+      let accumTierName = '';
+      let accumBeltLabels = new Set();
 
-        candidateGroups.forEach(cg => {
-          if (cg.list.length >= 8 && currentAccumulator.length === 0) {
-            mergedKumiteGroups.push({
-              label: cg.beltLabel,
-              tierName: tierName,
-              list: cg.list
+      rawTierGroups.forEach(rg => {
+        if (rg.list.length >= 8 && accumulator.length === 0) {
+          mergedKumiteGroups.push({
+            tierName: rg.tierName,
+            label: rg.beltLabel,
+            list: rg.list
+          });
+        } else {
+          if (accumulator.length + rg.list.length <= 9) {
+            accumulator.push(...rg.list);
+            rg.beltLabelsSet.forEach(l => accumBeltLabels.add(l));
+            if (!accumTierName) accumTierName = rg.tierName;
+            else if (accumTierName.indexOf(rg.tierName) === -1) {
+              accumTierName += ` & ${rg.tierName}`;
+            }
+          } else {
+            if (accumulator.length > 0) {
+              const labelsArr = Array.from(accumBeltLabels);
+              const displayLabel = labelsArr.length === 1 ? labelsArr[0] : `${accumTierName} (${labelsArr.join(', ')})`;
+              mergedKumiteGroups.push({
+                tierName: accumTierName,
+                label: displayLabel,
+                list: accumulator
+              });
+            }
+            accumulator = [...rg.list];
+            accumTierName = rg.tierName;
+            accumBeltLabels = new Set(rg.beltLabelsSet);
+          }
+        }
+      });
+
+      if (accumulator.length > 0) {
+        // If leftover accumulator has < 3 participants and we already have a merged group, merge with last group if size <= 9
+        if (accumulator.length < 3 && mergedKumiteGroups.length > 0) {
+          const lastGroup = mergedKumiteGroups[mergedKumiteGroups.length - 1];
+          if (lastGroup.list.length + accumulator.length <= 9) {
+            lastGroup.list.push(...accumulator);
+            accumBeltLabels.forEach(l => {
+              if (lastGroup.label.indexOf(l) === -1) {
+                lastGroup.label += `, ${l}`;
+              }
             });
           } else {
-            if (currentAccumulator.length + cg.list.length <= 9) {
-              currentAccumulator.push(...cg.list);
-              currentBeltLabels.add(cg.beltLabel);
-            } else {
-              if (currentAccumulator.length > 0) {
-                const labelsArr = Array.from(currentBeltLabels);
-                const displayLabel = labelsArr.length === 1 ? labelsArr[0] : `${tierName} (${labelsArr.join(', ')})`;
-                mergedKumiteGroups.push({
-                  label: displayLabel,
-                  tierName: tierName,
-                  list: currentAccumulator
-                });
-              }
-              currentAccumulator = [...cg.list];
-              currentBeltLabels = new Set([cg.beltLabel]);
-            }
+            const labelsArr = Array.from(accumBeltLabels);
+            const displayLabel = labelsArr.length === 1 ? labelsArr[0] : `${accumTierName} (${labelsArr.join(', ')})`;
+            mergedKumiteGroups.push({
+              tierName: accumTierName,
+              label: displayLabel,
+              list: accumulator
+            });
           }
-        });
-
-        if (currentAccumulator.length > 0) {
-          const labelsArr = Array.from(currentBeltLabels);
-          const displayLabel = labelsArr.length === 1 ? labelsArr[0] : `${tierName} (${labelsArr.join(', ')})`;
+        } else {
+          const labelsArr = Array.from(accumBeltLabels);
+          const displayLabel = labelsArr.length === 1 ? labelsArr[0] : `${accumTierName} (${labelsArr.join(', ')})`;
           mergedKumiteGroups.push({
+            tierName: accumTierName,
             label: displayLabel,
-            tierName: tierName,
-            list: currentAccumulator
+            list: accumulator
+          });
+        }
+      }
+
+      // Generate Kumite & Kata bout objects from mergedKumiteGroups
+      mergedKumiteGroups.forEach((mGroup, gIdx) => {
+        const letter = String.fromCharCode(97 + gIdx); // 'a', 'b', 'c'...
+        const cleanAgeCatCode = agBin.ageCat.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+        // 1. KUMITE BOUT
+        if (eventMode === 'kumite' || eventMode === 'both') {
+          const boutCode = `${cleanAgeCatCode}_kumite_${letter}`;
+          const boutName = `${agBin.ageCat} - ${agBin.gender} - ${mGroup.label} - KUMITE (Group ${letter.toUpperCase()})`;
+
+          bouts.push({
+            id: 'bout_kumite_' + Math.random().toString(36).substr(2, 9),
+            boutCode,
+            boutName,
+            eventType: 'Kumite',
+            ageCategory: agBin.ageCat,
+            gender: agBin.gender,
+            beltTier: mGroup.tierName,
+            participants: mGroup.list,
+            status: 'Pending',
+            tatamiId: null
           });
         }
 
-        // Generate Kumite & Kata bout objects from mergedKumiteGroups
-        mergedKumiteGroups.forEach((mGroup, gIdx) => {
-          const letter = String.fromCharCode(97 + gIdx); // 'a', 'b', 'c'...
-          const cleanAgeCatCode = agBin.ageCat.toLowerCase().replace(/[^a-z0-9]/g, '');
-
-          // 1. KUMITE BOUT
-          if (eventMode === 'kumite' || eventMode === 'both') {
-            const boutCode = `${cleanAgeCatCode}_kumite_${letter}`;
-            const boutName = `${agBin.ageCat} - ${agBin.gender} - ${mGroup.label} - KUMITE (Group ${letter.toUpperCase()})`;
-
-            bouts.push({
-              id: 'bout_kumite_' + Math.random().toString(36).substr(2, 9),
-              boutCode,
-              boutName,
-              eventType: 'Kumite',
-              ageCategory: agBin.ageCat,
-              gender: agBin.gender,
-              beltTier: mGroup.tierName,
-              participants: mGroup.list,
-              status: 'Pending',
-              tatamiId: null
-            });
-          }
-
-          // 2. KATA BOUT (1 Kumite Group -> 2 Kata Sub-Groups A1 & A2 with Strict Branch Separation)
-          if (eventMode === 'kata' || eventMode === 'both') {
+        // 2. KATA BOUT
+        if (eventMode === 'kata' || eventMode === 'both') {
+          // If group size < 6 (e.g. 3, 4, 5 participants), keep as 1 SINGLE Kata Bout!
+          // Only split into Sub-group 1 & 2 if group size >= 6 so each Kata bout has min 3-4 participants!
+          let kataSubs = [];
+          if (mGroup.list.length < 6) {
+            kataSubs = [{ label: letter.toUpperCase(), list: mGroup.list }];
+          } else {
             const [kataSub1, kataSub2] = this.splitKataSubgroupsWithBranchSeparation(mGroup.list);
-
-            const kataSubs = [
+            kataSubs = [
               { label: `${letter.toUpperCase()}1`, list: kataSub1 },
               { label: `${letter.toUpperCase()}2`, list: kataSub2 }
             ].filter(sub => sub.list.length > 0);
-
-            kataSubs.forEach((sub, subIdx) => {
-              const boutCode = `${cleanAgeCatCode}_kata_${letter}${subIdx + 1}`;
-              const boutName = `${agBin.ageCat} - ${agBin.gender} - ${mGroup.label} - KATA (Group ${sub.label})`;
-
-              bouts.push({
-                id: 'bout_kata_' + Math.random().toString(36).substr(2, 9),
-                boutCode,
-                boutName,
-                eventType: 'Kata',
-                ageCategory: agBin.ageCat,
-                gender: agBin.gender,
-                beltTier: mGroup.tierName,
-                participants: sub.list,
-                status: 'Pending',
-                tatamiId: null
-              });
-            });
           }
-        });
+
+          kataSubs.forEach((sub, subIdx) => {
+            const subLabelStr = kataSubs.length === 1 ? letter.toUpperCase() : `${letter.toUpperCase()}${subIdx + 1}`;
+            const boutCode = `${cleanAgeCatCode}_kata_${subLabelStr.toLowerCase()}`;
+            const boutName = `${agBin.ageCat} - ${agBin.gender} - ${mGroup.label} - KATA (Group ${subLabelStr})`;
+
+            bouts.push({
+              id: 'bout_kata_' + Math.random().toString(36).substr(2, 9),
+              boutCode,
+              boutName,
+              eventType: 'Kata',
+              ageCategory: agBin.ageCat,
+              gender: agBin.gender,
+              beltTier: mGroup.tierName,
+              participants: sub.list,
+              status: 'Pending',
+              tatamiId: null
+            });
+          });
+        }
       });
+    });
+
+    // Final Sort: All KATA bouts first, followed by all KUMITE bouts
+    bouts.sort((a, b) => {
+      if (a.eventType !== b.eventType) {
+        return a.eventType === 'Kata' ? -1 : 1;
+      }
+      if (a.ageCategory !== b.ageCategory) return a.ageCategory.localeCompare(b.ageCategory);
+      if (a.gender !== b.gender) return a.gender.localeCompare(b.gender);
+      return (a.boutCode || '').localeCompare(b.boutCode || '');
     });
 
     return bouts;

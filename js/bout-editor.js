@@ -10,8 +10,10 @@ const BoutEditor = {
   cleanParticipantName(str) {
     if (str === undefined || str === null) return '';
     return String(str)
-      .replace(/^[\s\(\[\{]*[YNyn][\s\)\]\}]*[-\/:\s]*/i, '') // Strips leading (Y), (N), Y -, N -, (y), (n), etc.
-      .replace(/[\s\(\[\{]+[YNyn][\s\)\]\}]*$/i, '')           // Strips trailing (Y), (N), (y), (n), etc.
+      .replace(/^\s*[\(\[\{]\s*[YNyn]\s*[\)\]\}]\s*/i, '') // Strips leading (Y), (N), [Y], [N], etc.
+      .replace(/^\s*[YNyn]\s*[-\/:;]\s*/i, '')             // Strips leading Y -, N -, Y:, N:, etc.
+      .replace(/\s*[\(\[\{]\s*[YNyn]\s*[\)\]\}]\s*$/i, '') // Strips trailing (Y), (N), [Y], [N], etc.
+      .replace(/\s*[-\/:;]\s*[YNyn]\s*$/i, '')             // Strips trailing - Y, - N, etc.
       .trim();
   },
 
