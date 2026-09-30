@@ -10,34 +10,51 @@ const { Pool } = require('pg');
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '20mb' }));
+app.use(express.json({ limit: '25mb' }));
 
 // Aiven PostgreSQL Database Connection URL with Automatic Fallback
 const FALLBACK_B64 = 'cG9zdGdyZXM6Ly9hdm5hZG1pbjpBVk5TX29XQ1Bvc3lweTRid1ZWVjFBV2hAc2hvdG9rYW4tdG91cm5hbWVudC15YXNocGFyYWIwNTA4LWQwYmEuYy5haXZlbmNsb3VkLmNvbToyNDI5Ni9kZWZhdWx0ZGI=';
-const FALLBACK_URI = Buffer.from(FALLBACK_B64, 'base64').toString('utf8');
 
-const rawUri = process.env.DATABASE_URL || FALLBACK_URI;
-const cleanUri = rawUri.replace(/\?.*$/, '');
+function getDatabaseUri() {
+  let uri = process.env.DATABASE_URL;
+  if (!uri || typeof uri !== 'string' || uri.trim() === '' || uri.trim() === 'null' || uri.trim() === 'undefined') {
+    uri = Buffer.from(FALLBACK_B64, 'base64').toString('utf8');
+  }
+  return uri.trim().replace(/^["']|["']$/g, '').replace(/\?.*$/, '');
+}
+
+const cleanUri = getDatabaseUri();
 
 const pool = new Pool({
   connectionString: cleanUri,
   ssl: { rejectUnauthorized: false }
 });
 
+// Safe database query wrapper to avoid internal null-client errors
+async function dbQuery(text, params) {
+  if (!pool) throw new Error('Database pool not initialized');
+  const client = await pool.connect();
+  try {
+    const res = await client.query(text, params);
+    return res;
+  } finally {
+    if (client) {
+      try { client.release(); } catch(e) {}
+    }
+  }
+}
+
 // Initialize database schema
 async function initDatabase() {
   try {
-    const client = await pool.connect();
-    console.log('Successfully connected to Aiven PostgreSQL database!');
-    await client.query(`
+    await dbQuery(`
       CREATE TABLE IF NOT EXISTS tournament_state (
         id VARCHAR(50) PRIMARY KEY,
         state_data JSONB NOT NULL,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
-    client.release();
-    console.log('Database schema "tournament_state" initialized successfully.');
+    console.log('Successfully connected to Aiven PostgreSQL & initialized tournament_state table.');
   } catch (err) {
     console.error('Aiven PostgreSQL Connection Error:', err.message);
   }
@@ -48,14 +65,14 @@ initDatabase();
 // 1. GET /api/tournament - Fetch latest tournament data from Aiven DB
 app.get('/api/tournament', async (req, res) => {
   try {
-    const result = await pool.query('SELECT state_data FROM tournament_state WHERE id = $1', ['main']);
-    if (result.rows.length > 0) {
+    const result = await dbQuery('SELECT state_data FROM tournament_state WHERE id = $1', ['main']);
+    if (result && result.rows && result.rows.length > 0) {
       res.json(result.rows[0].state_data);
     } else {
       res.json(null);
     }
   } catch (err) {
-    console.error('Fetch tournament API error:', err);
+    console.error('Fetch tournament API error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -66,7 +83,7 @@ app.post('/api/tournament', async (req, res) => {
     const stateData = req.body;
     if (!stateData) return res.status(400).json({ error: 'No state data provided' });
 
-    await pool.query(`
+    await dbQuery(`
       INSERT INTO tournament_state (id, state_data, updated_at)
       VALUES ($1, $2, NOW())
       ON CONFLICT (id) DO UPDATE SET state_data = EXCLUDED.state_data, updated_at = NOW();
@@ -74,7 +91,7 @@ app.post('/api/tournament', async (req, res) => {
 
     res.json({ success: true, message: 'Tournament data saved to Aiven PostgreSQL!' });
   } catch (err) {
-    console.error('Save tournament API error:', err);
+    console.error('Save tournament API error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -82,10 +99,11 @@ app.post('/api/tournament', async (req, res) => {
 // Health check endpoint
 app.get('/api/health', async (req, res) => {
   try {
-    const result = await pool.query('SELECT NOW()');
+    const result = await dbQuery('SELECT NOW()');
     res.json({ status: 'OK', database: 'Connected', serverTime: result.rows[0].now });
   } catch (err) {
-    res.status(500).json({ status: 'ERROR', message: err.message });
+    console.error('Health check error:', err.message);
+    res.status(500).json({ status: 'ERROR', message: err.message || 'Database connection error' });
   }
 });
 
