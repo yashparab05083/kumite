@@ -384,11 +384,17 @@ const BracketEngine = {
     // Reset places and medals
     bracket.competitors.forEach(c => c.place = null);
     bracket.medals = { gold: null, silver: null, bronze1: null, bronze2: null };
+
     if (!bracket.tieBreaker) {
-      bracket.tieBreaker = { flagVote: null, rescoreRound: null };
+      bracket.tieBreaker = { activeTie: null, flagVote: null, rescoreRound: null };
     }
 
-    if (activeScored.length === 0) return;
+    if (activeScored.length === 0) {
+      bracket.tieBreaker.activeTie = null;
+      bracket.tieBreaker.flagVote = null;
+      bracket.tieBreaker.rescoreRound = null;
+      return;
+    }
 
     // Group active scored by totalScore
     const scoreBins = {};
@@ -399,60 +405,61 @@ const BracketEngine = {
     });
 
     const sortedKeys = Object.keys(scoreBins).map(Number).sort((a, b) => b - a);
-
     let currentRank = 1;
-    const flagWinnerId = bracket.tieBreaker.flagVote ? bracket.tieBreaker.flagVote.winnerId : null;
 
-    sortedKeys.forEach(scoreKey => {
+    for (let i = 0; i < sortedKeys.length; i++) {
+      const scoreKey = sortedKeys[i];
       const bin = scoreBins[scoreKey.toFixed(2)];
-      
+
       if (bin.length === 1) {
         const c = bin[0];
         c.place = currentRank;
-        if (currentRank === 1) bracket.medals.gold = c;
-        else if (currentRank === 2) bracket.medals.silver = c;
-        else if (currentRank === 3) bracket.medals.bronze1 = c;
-        else if (currentRank === 4) bracket.medals.bronze2 = c;
         currentRank += 1;
       } else if (bin.length === 2) {
-        // 2-Participant Tie for Medal position
-        if (flagWinnerId && bin.some(c => c.id === flagWinnerId)) {
-          const winner = bin.find(c => c.id === flagWinnerId);
-          const loser = bin.find(c => c.id !== flagWinnerId);
-          winner.place = currentRank;
-          loser.place = currentRank + 1;
-          
-          if (currentRank === 1) { bracket.medals.gold = winner; bracket.medals.silver = loser; }
-          else if (currentRank === 2) { bracket.medals.silver = winner; bracket.medals.bronze1 = loser; }
-          else if (currentRank === 3) { bracket.medals.bronze1 = winner; bracket.medals.bronze2 = loser; }
-          currentRank += 2;
-        } else {
-          bin.forEach(c => c.place = currentRank);
-          if (currentRank <= 2) {
+        // 2-Way Tie
+        if (currentRank <= 2) {
+          const flagWinnerId = bracket.tieBreaker.flagVote ? bracket.tieBreaker.flagVote.winnerId : null;
+
+          if (flagWinnerId && bin.some(c => c.id === flagWinnerId)) {
+            const winner = bin.find(c => c.id === flagWinnerId);
+            const loser = bin.find(c => c.id !== flagWinnerId);
+            winner.place = currentRank;
+            loser.place = currentRank + 1;
+            currentRank += 2;
+          } else {
+            bin.forEach(c => c.place = currentRank);
+            bracket.tieBreaker.activeTie = '2WAY_FLAG';
+            bracket.tieBreaker.rescoreRound = null;
             bracket.tieBreaker.flagVote = {
               type: '2WAY_FLAG',
               tiedIds: bin.map(c => c.id),
               winnerId: null
             };
-          } else {
-            // Bronze tie is allowed (dual 3rd place)
-            if (currentRank === 3) {
-              bracket.medals.bronze1 = bin[0];
-              bracket.medals.bronze2 = bin[1];
-            }
+            currentRank += 2;
+            break; // Stop ranking until 2-way flag tie resolved
           }
+        } else {
+          // Bronze tie is allowed (dual 3rd place)
+          bin.forEach(c => c.place = currentRank);
           currentRank += 2;
         }
       } else if (bin.length >= 3) {
-        // 3+ Way Tie: Re-score ONLY for tied contestants
+        // 3+ Way Tie
         bin.forEach(c => c.place = currentRank);
-        if (currentRank <= 3 && !bracket.tieBreaker.rescoreRound) {
+
+        const rescore = bracket.tieBreaker.rescoreRound;
+        const currentTiedKey = bin.map(c => c.id).sort().join(',');
+
+        if (!rescore || (rescore.tiedIds.sort().join(',') !== currentTiedKey)) {
+          // Create new Re-Score Round for 3+ tied contestants
+          bracket.tieBreaker.activeTie = '3WAY_RESCORE';
+          bracket.tieBreaker.flagVote = null;
           bracket.tieBreaker.rescoreRound = {
             type: '3WAY_RESCORE',
             tiedIds: bin.map(c => c.id),
-            competitors: bin.map((c, i) => ({
+            competitors: bin.map((c, idx) => ({
               id: c.id,
-              no: i + 1,
+              no: idx + 1,
               name: c.name,
               branch: c.branch,
               scores: [0, 0, 0, 0, 0],
@@ -460,8 +467,93 @@ const BracketEngine = {
               place: null
             }))
           };
+          break;
+        } else {
+          // Evaluate existing 3+ Way Re-Score Round
+          const allRescored = rescore.competitors.every(rc => rc.scores.some(s => parseFloat(s) > 0));
+
+          if (!allRescored) {
+            bracket.tieBreaker.activeTie = '3WAY_RESCORE';
+            bracket.tieBreaker.flagVote = null;
+            break; // Wait for operator to enter re-scores
+          }
+
+          // Compute re-score totals
+          rescore.competitors.forEach(rc => {
+            const sum = rc.scores.reduce((acc, v) => acc + (parseFloat(v) || 0), 0);
+            rc.totalScore = Math.round(sum * 100) / 100;
+          });
+
+          // Group re-scores by totalScore
+          const rescoreBins = {};
+          rescore.competitors.forEach(rc => {
+            const k = rc.totalScore.toFixed(2);
+            if (!rescoreBins[k]) rescoreBins[k] = [];
+            rescoreBins[k].push(rc);
+          });
+
+          const sortedRescoreKeys = Object.keys(rescoreBins).map(Number).sort((a, b) => b - a);
+          let subRank = currentRank;
+          let subTieFound = false;
+
+          for (let rk of sortedRescoreKeys) {
+            const rBin = rescoreBins[rk.toFixed(2)];
+            if (rBin.length === 1) {
+              const mainC = bin.find(c => c.id === rBin[0].id);
+              if (mainC) mainC.place = subRank;
+              subRank += 1;
+            } else if (rBin.length === 2) {
+              // Re-score produced a 2-Way Tie! Transition to 2WAY_FLAG window
+              subTieFound = true;
+              const flagWinnerId = bracket.tieBreaker.flagVote ? bracket.tieBreaker.flagVote.winnerId : null;
+
+              if (flagWinnerId && rBin.some(c => c.id === flagWinnerId)) {
+                const winnerC = bin.find(c => c.id === flagWinnerId);
+                const loserC = bin.find(c => c.id !== flagWinnerId && rBin.some(rb => rb.id === c.id));
+                if (winnerC) winnerC.place = subRank;
+                if (loserC) loserC.place = subRank + 1;
+                subRank += 2;
+              } else {
+                bracket.tieBreaker.activeTie = '2WAY_FLAG';
+                bracket.tieBreaker.flagVote = {
+                  type: '2WAY_FLAG',
+                  tiedIds: rBin.map(c => c.id),
+                  winnerId: null
+                };
+                subRank += 2;
+                break;
+              }
+            } else if (rBin.length >= 3) {
+              // Re-score produced another 3-Way Tie! Reset re-scores for Next Round
+              subTieFound = true;
+              rBin.forEach(rc => rc.scores = [0, 0, 0, 0, 0]);
+              bracket.tieBreaker.activeTie = '3WAY_RESCORE';
+              bracket.tieBreaker.flagVote = null;
+              break;
+            }
+          }
+
+          if (subTieFound && bracket.tieBreaker.activeTie) {
+            break;
+          }
+
+          // If all ties in re-score resolved cleanly
+          bracket.tieBreaker.activeTie = null;
+          bracket.tieBreaker.flagVote = null;
+          currentRank += bin.length;
         }
-        currentRank += bin.length;
+      }
+    }
+
+    // Assign Medals based on final places
+    bracket.competitors.forEach(c => {
+      if (c.place === 1) bracket.medals.gold = c;
+      else if (c.place === 2) bracket.medals.silver = c;
+      else if (c.place === 3) {
+        if (!bracket.medals.bronze1) bracket.medals.bronze1 = c;
+        else if (!bracket.medals.bronze2) bracket.medals.bronze2 = c;
+      } else if (c.place === 4 && !bracket.medals.bronze2) {
+        bracket.medals.bronze2 = c;
       }
     });
 

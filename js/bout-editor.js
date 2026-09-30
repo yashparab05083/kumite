@@ -532,24 +532,34 @@ const BoutEditor = {
     const bronze1Name = medals.bronze1 ? medals.bronze1.name : '_______';
     const bronze2Name = medals.bronze2 ? medals.bronze2.name : '_______';
 
-    // 2-Way Flag Vote UI
+    const activeTie = tieBreaker.activeTie || (
+      (tieBreaker.rescoreRound && !tieBreaker.flagVote) ? '3WAY_RESCORE' :
+      (tieBreaker.flagVote ? '2WAY_FLAG' : null)
+    );
+
+    // 2-Way Flag Vote UI ONLY
     let flagVoteCardHTML = '';
-    if (tieBreaker.flagVote && !tieBreaker.flagVote.winnerId) {
+    if (activeTie === '2WAY_FLAG' && tieBreaker.flagVote && !tieBreaker.flagVote.winnerId) {
       const tiedComps = competitors.filter(c => tieBreaker.flagVote.tiedIds.includes(c.id));
       if (tiedComps.length === 2) {
         flagVoteCardHTML = `
           <div class="card border-warning my-3 p-3 bg-light print-hide shadow-sm">
             <div class="d-flex justify-content-between align-items-center mb-2">
               <h6 class="fw-bold text-dark m-0">⚠️ 2-WAY TIE DETECTED FOR MEDAL POSITION</h6>
-              <span class="badge bg-warning text-dark">Flag Vote Required</span>
+              <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-warning text-dark">Flag Vote Required</span>
+                ${isOrganizer ? `
+                  <button class="btn btn-outline-danger btn-sm py-0 px-2 fw-bold" onclick="BoutEditor.undoKataTieBreaker('${bracket.boutId}')">↩️ Undo Tie-Breaker</button>
+                ` : ''}
+              </div>
             </div>
-            <p class="small text-muted mb-2">Referees cast AKA or AAO flag vote to break tie between <strong>${tiedComps[0].name}</strong> and <strong>${tiedComps[1].name}</strong>:</p>
+            <p class="small text-muted mb-2">Referees cast AKA or AAO flag vote to break tie between <strong>${this.cleanParticipantName(tiedComps[0].name)}</strong> and <strong>${this.cleanParticipantName(tiedComps[1].name)}</strong>:</p>
             <div class="d-flex gap-3 justify-content-center">
-              <button class="btn btn-danger fw-bold px-4" onclick="BoutEditor.castKataFlagVote('${bracket.boutId}', '${tiedComps[0].id}')">
-                🔴 VOTE AKA: ${tiedComps[0].name}
+              <button class="btn btn-danger fw-bold px-4 fs-6" onclick="BoutEditor.castKataFlagVote('${bracket.boutId}', '${tiedComps[0].id}')">
+                🔴 VOTE AKA: ${this.cleanParticipantName(tiedComps[0].name)}
               </button>
-              <button class="btn btn-primary fw-bold px-4" onclick="BoutEditor.castKataFlagVote('${bracket.boutId}', '${tiedComps[1].id}')">
-                🔵 VOTE AAO: ${tiedComps[1].name}
+              <button class="btn btn-primary fw-bold px-4 fs-6" onclick="BoutEditor.castKataFlagVote('${bracket.boutId}', '${tiedComps[1].id}')">
+                🔵 VOTE AAO: ${this.cleanParticipantName(tiedComps[1].name)}
               </button>
             </div>
           </div>
@@ -557,15 +567,20 @@ const BoutEditor = {
       }
     }
 
-    // 3+ Way Re-Score Round UI
+    // 3+ Way Re-Score Round UI ONLY
     let rescoreRoundHTML = '';
-    if (tieBreaker.rescoreRound) {
+    if (activeTie === '3WAY_RESCORE' && tieBreaker.rescoreRound) {
       const rescoreComps = tieBreaker.rescoreRound.competitors || [];
       rescoreRoundHTML = `
-        <div class="card border-danger my-3 p-3 bg-white shadow-sm">
+        <div class="card border-danger my-3 p-3 bg-white print-hide shadow-sm">
           <div class="d-flex justify-content-between align-items-center mb-2">
             <h6 class="fw-bold text-danger m-0">🔥 3+ WAY TIE - RE-SCORING ROUND (TIED CONTESTANTS ONLY)</h6>
-            <span class="badge bg-danger">Scoped Re-Score</span>
+            <div class="d-flex align-items-center gap-2">
+              <span class="badge bg-danger">Scoped Re-Score</span>
+              ${isOrganizer ? `
+                <button class="btn btn-outline-dark btn-sm py-0 px-2 fw-bold" onclick="BoutEditor.undoKataTieBreaker('${bracket.boutId}')">↩️ Reset Re-Scores</button>
+              ` : ''}
+            </div>
           </div>
           <table class="table table-sm table-bordered align-middle text-center mb-0">
             <thead class="table-dark">
@@ -584,7 +599,7 @@ const BoutEditor = {
               ${rescoreComps.map((rc, idx) => `
                 <tr>
                   <td class="fw-bold">${idx + 1}</td>
-                  <td class="text-start fw-bold">${rc.name} <small class="text-muted">(${rc.branch || 'Dojo'})</small></td>
+                  <td class="text-start fw-bold">${this.cleanParticipantName(rc.name)} <small class="text-muted">(${rc.branch || 'Dojo'})</small></td>
                   ${[0, 1, 2, 3, 4].map(refIdx => `
                     <td>
                       ${isOrganizer ? `
@@ -747,7 +762,7 @@ const BoutEditor = {
 
   updateKataRescore(boutId, compId, refIndex, val) {
     const bracket = SyncService.state.brackets[boutId];
-    if (!bracket || bracket.eventType !== 'Kata' || !bracket.tieBreaker.rescoreRound) return;
+    if (!bracket || bracket.eventType !== 'Kata' || !bracket.tieBreaker || !bracket.tieBreaker.rescoreRound) return;
 
     const rescoreComp = bracket.tieBreaker.rescoreRound.competitors.find(c => c.id === compId);
     if (!rescoreComp) return;
@@ -755,25 +770,31 @@ const BoutEditor = {
     const scoreNum = parseFloat(val) || 0;
     rescoreComp.scores[refIndex] = scoreNum;
 
-    const sum = rescoreComp.scores.reduce((acc, v) => acc + (parseFloat(v) || 0), 0);
-    rescoreComp.totalScore = Math.round(sum * 100) / 100;
+    BracketEngine.recalculateKataRanks(bracket);
+    SyncService.checkBoutCompletion(boutId);
+    SyncService.saveToLocal();
+    this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
+  },
 
-    // Rank tied competitors based on rescore total
-    const sortedRescores = [...bracket.tieBreaker.rescoreRound.competitors].sort((a, b) => b.totalScore - a.totalScore);
-    const mainTiedComps = bracket.competitors.filter(c => bracket.tieBreaker.rescoreRound.tiedIds.includes(c.id));
-    const basePlace = mainTiedComps.reduce((min, c) => Math.min(min, c.place || 1), 99);
+  undoKataTieBreaker(boutId) {
+    const bracket = SyncService.state.brackets[boutId];
+    if (!bracket || bracket.eventType !== 'Kata' || !bracket.tieBreaker) return;
 
-    sortedRescores.forEach((rc, idx) => {
-      const mainComp = bracket.competitors.find(c => c.id === rc.id);
-      if (mainComp) {
-        mainComp.place = basePlace + idx;
-        if (mainComp.place === 1) bracket.medals.gold = mainComp;
-        else if (mainComp.place === 2) bracket.medals.silver = mainComp;
-        else if (mainComp.place === 3) bracket.medals.bronze1 = mainComp;
-        else if (mainComp.place === 4) bracket.medals.bronze2 = mainComp;
+    if (!confirm('Are you sure you want to reset/undo the active tie-breaker for this Kata sheet?')) return;
+
+    if (bracket.tieBreaker.flagVote) {
+      bracket.tieBreaker.flagVote = null;
+      if (bracket.tieBreaker.rescoreRound) {
+        bracket.tieBreaker.activeTie = '3WAY_RESCORE';
+      } else {
+        bracket.tieBreaker.activeTie = null;
       }
-    });
+    } else if (bracket.tieBreaker.rescoreRound) {
+      bracket.tieBreaker.rescoreRound = null;
+      bracket.tieBreaker.activeTie = null;
+    }
 
+    BracketEngine.recalculateKataRanks(bracket);
     SyncService.checkBoutCompletion(boutId);
     SyncService.saveToLocal();
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
