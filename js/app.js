@@ -80,31 +80,23 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('importStatus').innerText = `Parsed ${participants.length} participants. Generating bout sheets...`;
         
         const eventMode = document.getElementById('eventModeSelect') ? document.getElementById('eventModeSelect').value : 'both';
-        const newBouts = ExcelImporter.generateBoutGroups(participants, eventMode);
-        const newBrackets = {};
+        const bouts = ExcelImporter.generateBoutGroups(participants, eventMode);
+        const brackets = {};
         
-        newBouts.forEach(b => {
-          newBrackets[b.id] = BracketEngine.createBracket(b);
+        bouts.forEach(b => {
+          brackets[b.id] = BracketEngine.createBracket(b);
         });
 
-        // Append to existing accumulated tournament data
-        SyncService.appendBoutsAndBrackets(newBouts, newBrackets);
+        SyncService.setBoutsAndBrackets(bouts, brackets);
         
-        const totalBoutsCount = SyncService.state.bouts ? SyncService.state.bouts.length : newBouts.length;
-        const statusEl = document.getElementById('importStatus');
-        if (statusEl) {
-          statusEl.className = 'fw-bold text-success';
-          statusEl.innerHTML = `
-            ✅ <strong>Added ${newBouts.length} Bout Sheets!</strong><br>
-            <small class="text-muted">Total Accumulated Bout Sheets: <strong>${totalBoutsCount}</strong>. Make adjustments as needed, then click 'Download All Bout Sheets PDF' when ready.</small>
-          `;
-        }
-
+        document.getElementById('importStatus').innerText = `Successfully created ${bouts.length} Bout Sheets! Auto-generating merged PDF download...`;
         renderBoutList('boutSheetsListContainer');
         TatamiManager.renderOrganizerDashboard('tatamiDashboardContainer');
 
-        // Reset file input value so user can upload next file seamlessly
-        e.target.value = '';
+        // Automatically download all bout sheets in 1 merged landscape PDF
+        setTimeout(() => {
+          BoutEditor.downloadAllBoutsPDF();
+        }, 600);
 
       } catch (err) {
         console.error('Error importing Excel:', err);

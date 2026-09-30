@@ -273,7 +273,7 @@
               <h5 class="m-0 fw-bold">📥 Upload Participant Excel File</h5>
             </div>
             <div class="card-body">
-              <p class="text-muted small mb-2">Upload year-wise Excel files 1-by-1 to accumulate categories. Make adjustments as needed, then manually click 'Download All Bout Sheets PDF' when ready.</p>
+              <p class="text-muted small mb-2">Select your participant Excel sheet containing Name, Gender, Age, Belt, Dojo, Instructor, and School Hours.</p>
               <div class="mb-2">
                 <label class="form-label small fw-bold mb-1 text-primary">Select Tournament Event Mode:</label>
                 <select id="eventModeSelect" class="form-select form-select-sm mb-2 fw-bold text-primary border-primary">
@@ -282,10 +282,7 @@
                   <option value="kata">🎯 Kata Only</option>
                 </select>
               </div>
-              <input type="file" id="excelFileInput" class="form-control mb-2" accept=".xlsx, .xls">
-              <div class="d-flex justify-content-between align-items-center mb-2">
-                <button class="btn btn-outline-danger btn-sm py-0 px-2 fw-bold" onclick="SyncService.clearAllTournamentData()">🧹 Reset / Clear All Data</button>
-              </div>
+              <input type="file" id="excelFileInput" class="form-control mb-3" accept=".xlsx, .xls">
               <div id="importStatus" class="fw-bold text-success"></div>
             </div>
           </div>

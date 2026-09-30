@@ -29,15 +29,7 @@ const BracketEngine = {
     }
 
     const rawParticipants = [...bout.participants];
-    const seededList = this.applyBranchSeparation(rawParticipants);
-    const slots = Array(16).fill(null);
-
-    seededList.forEach((participant, idx) => {
-      if (idx < 16) {
-        const slotIdx = this.INFINITY_SEED_MAP[idx];
-        slots[slotIdx] = { ...participant, seedNumber: idx + 1 };
-      }
-    });
+    const slots = this.assignBracketSlotsWithBranchSeparation(rawParticipants);
 
     const matches = [];
 
@@ -124,26 +116,60 @@ const BracketEngine = {
     };
   },
 
-  applyBranchSeparation(participants) {
+  assignBracketSlotsWithBranchSeparation(participants) {
+    const slots = Array(16).fill(null);
+    if (!participants || participants.length === 0) return slots;
+
+    // Group by Branch / Dojo
     const branchGroups = {};
     participants.forEach(p => {
-      const b = p.branch || 'Unknown';
+      const b = (p.branch || 'Unknown').trim();
       if (!branchGroups[b]) branchGroups[b] = [];
       branchGroups[b].push(p);
     });
 
-    const poolA = [];
-    const poolB = [];
+    // Sort branches by count descending
+    const sortedBranches = Object.keys(branchGroups).sort((a, b) => branchGroups[b].length - branchGroups[a].length);
 
-    Object.keys(branchGroups).forEach(branch => {
+    // Left Pool (Pool A) slot positions (Matches 1, 2, 3, 4)
+    const leftPoolSlots = [0, 2, 4, 6, 1, 3, 5, 7];
+    // Right Pool (Pool B) slot positions (Matches 5, 6, 7, 8)
+    const rightPoolSlots = [8, 10, 12, 14, 9, 11, 13, 15];
+
+    let leftIdx = 0;
+    let rightIdx = 0;
+
+    sortedBranches.forEach(branch => {
       const list = branchGroups[branch];
-      list.forEach((p, idx) => {
-        if (idx % 2 === 0) poolA.push(p);
-        else poolB.push(p);
+      list.forEach((p, pIdx) => {
+        let assignedSlot = null;
+
+        // Alternating allocation: Even index -> Left Pool (Pool A), Odd index -> Right Pool (Pool B)
+        if (pIdx % 2 === 0) {
+          if (leftIdx < leftPoolSlots.length) {
+            assignedSlot = leftPoolSlots[leftIdx++];
+          } else if (rightIdx < rightPoolSlots.length) {
+            assignedSlot = rightPoolSlots[rightIdx++];
+          }
+        } else {
+          if (rightIdx < rightPoolSlots.length) {
+            assignedSlot = rightPoolSlots[rightIdx++];
+          } else if (leftIdx < leftPoolSlots.length) {
+            assignedSlot = leftPoolSlots[leftIdx++];
+          }
+        }
+
+        if (assignedSlot !== null) {
+          slots[assignedSlot] = { ...p, seedNumber: assignedSlot + 1 };
+        }
       });
     });
 
-    return [...poolA, ...poolB];
+    return slots;
+  },
+
+  applyBranchSeparation(participants) {
+    return this.assignBracketSlotsWithBranchSeparation(participants);
   },
 
   // Helper: check if a feeder match is finished/resolved (Completed OR Empty)

@@ -136,50 +136,6 @@ const SyncService = {
     this.saveToLocal();
   },
 
-  appendBoutsAndBrackets(newBouts, newBrackets) {
-    if (!this.state.bouts || !Array.isArray(this.state.bouts)) {
-      this.state.bouts = [];
-    }
-    if (!this.state.brackets || typeof this.state.brackets !== 'object') {
-      this.state.brackets = {};
-    }
-
-    newBouts.forEach(b => {
-      const existingIdx = this.state.bouts.findIndex(eb => eb.id === b.id);
-      if (existingIdx !== -1) {
-        this.state.bouts[existingIdx] = b;
-      } else {
-        this.state.bouts.push(b);
-      }
-    });
-
-    Object.keys(newBrackets).forEach(id => {
-      this.state.brackets[id] = newBrackets[id];
-    });
-
-    this.saveToLocal();
-  },
-
-  clearAllTournamentData() {
-    if (!confirm('⚠️ Are you sure you want to clear ALL tournament data (bouts, brackets, scores)? This will reset the tournament for a fresh start.')) return;
-
-    this.state.bouts = [];
-    this.state.brackets = {};
-    if (this.state.tatamis) {
-      this.state.tatamis.forEach(t => {
-        t.activeBoutId = null;
-        t.activeMatchNumber = null;
-        t.status = 'Empty';
-        t.assignedBoutIds = [];
-      });
-    }
-
-    localStorage.removeItem(this.STORAGE_KEY);
-    localStorage.removeItem('kumite_backup_snapshot');
-    this.saveToLocal();
-    alert('All tournament data cleared. You can now upload new Excel files 1-by-1 to accumulate data.');
-  },
-
   assignBoutToTatami(tatamiId, boutId) {
     const tatami = this.state.tatamis.find(t => t.id === tatamiId);
     if (!tatami) return;
