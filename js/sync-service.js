@@ -79,13 +79,24 @@ const SyncService = {
 
   async loadFromAivenDB() {
     try {
+      // Skip cloud pull if local edit happened within last 4 seconds or a push is in-flight
+      if (this.isPushing || (this.lastLocalEditTime && (Date.now() - this.lastLocalEditTime < 4000))) {
+        return;
+      }
+
       const response = await fetch(this.AIVEN_API_URL);
       if (response.ok) {
         const cloudData = await response.json();
         if (cloudData && cloudData.bouts && Array.isArray(cloudData.bouts) && cloudData.bouts.length > 0) {
-          this.state = { ...this.state, ...cloudData };
-          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
-          this.notifyListeners();
+          const localLastUpdated = (this.state && this.state.lastUpdated) || 0;
+          const cloudLastUpdated = cloudData.lastUpdated || 0;
+
+          // Only accept cloud data if cloud data is NEWER than local state or local state has no bouts
+          if (!this.state.bouts || this.state.bouts.length === 0 || cloudLastUpdated > localLastUpdated) {
+            this.state = { ...this.state, ...cloudData };
+            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
+            this.notifyListeners();
+          }
         }
       }
     } catch (err) {
@@ -96,6 +107,7 @@ const SyncService = {
   async pushToAivenDB() {
     try {
       if (!this.state || !this.state.bouts || this.state.bouts.length === 0) return;
+      this.isPushing = true;
       await fetch(this.AIVEN_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -103,6 +115,8 @@ const SyncService = {
       });
     } catch (err) {
       // Offline fallback
+    } finally {
+      this.isPushing = false;
     }
   },
 
@@ -148,6 +162,9 @@ const SyncService = {
 
   saveToLocal() {
     try {
+      this.state.lastUpdated = Date.now();
+      this.lastLocalEditTime = Date.now();
+
       const serialized = JSON.stringify(this.state);
       localStorage.setItem(this.STORAGE_KEY, serialized);
       // Secondary auto-backup snapshot safeguard
@@ -175,14 +192,17 @@ const SyncService = {
   },
 
   assignBoutToTatami(tatamiId, boutId) {
-    const tatami = this.state.tatamis.find(t => t.id === tatamiId);
+    if (!tatamiId || !boutId) return;
+    const numericTatamiId = parseInt(tatamiId, 10);
+
+    const tatami = this.state.tatamis.find(t => t.id === numericTatamiId);
     if (!tatami) return;
 
     // Clean up assignment from any previous tatami
     this.state.tatamis.forEach(t => {
       if (t.assignedBoutIds && Array.isArray(t.assignedBoutIds)) {
         const idx = t.assignedBoutIds.indexOf(boutId);
-        if (idx !== -1 && t.id !== tatamiId) {
+        if (idx !== -1 && t.id !== numericTatamiId) {
           t.assignedBoutIds.splice(idx, 1);
         }
       }
@@ -198,7 +218,7 @@ const SyncService = {
 
     const bout = this.state.bouts.find(b => b.id === boutId);
     if (bout) {
-      bout.tatamiId = tatamiId;
+      bout.tatamiId = numericTatamiId;
       if (bout.status !== 'Completed') {
         bout.status = 'Assigned';
       }
@@ -206,7 +226,7 @@ const SyncService = {
 
     const bracket = this.state.brackets[boutId];
     if (bracket) {
-      bracket.tatamiId = tatamiId;
+      bracket.tatamiId = numericTatamiId;
     }
 
     this.saveToLocal();

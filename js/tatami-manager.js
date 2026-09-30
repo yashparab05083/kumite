@@ -8,8 +8,8 @@ const TatamiManager = {
     const container = document.getElementById(containerId);
     if (!container) return;
 
-    const tatamis = SyncService.state.tatamis;
-    const bouts = SyncService.state.bouts;
+    const tatamis = SyncService.state.tatamis || [];
+    const bouts = SyncService.state.bouts || [];
 
     let html = `
       <div class="row g-3">
@@ -18,7 +18,7 @@ const TatamiManager = {
     tatamis.forEach(tatami => {
       const activeBout = bouts.find(b => b.id === tatami.activeBoutId);
       const assignedIds = Array.isArray(tatami.assignedBoutIds) ? tatami.assignedBoutIds : [];
-      const assignedBouts = bouts.filter(b => assignedIds.indexOf(b.id) !== -1);
+      const assignedBouts = bouts.filter(b => (assignedIds && assignedIds.indexOf(b.id) !== -1) || b.tatamiId === tatami.id);
 
       html += `
         <div class="col-md-3">
@@ -58,11 +58,12 @@ const TatamiManager = {
     const container = document.getElementById(containerId);
     if (!container) return;
 
-    const tatami = SyncService.state.tatamis.find(t => t.id === tatamiId);
+    const numericTatamiId = parseInt(tatamiId, 10);
+    const tatami = SyncService.state.tatamis.find(t => t.id === numericTatamiId);
     if (!tatami) return;
 
     const assignedIds = Array.isArray(tatami.assignedBoutIds) ? tatami.assignedBoutIds : [];
-    const assignedBouts = SyncService.state.bouts.filter(b => assignedIds.indexOf(b.id) !== -1);
+    const assignedBouts = SyncService.state.bouts.filter(b => (assignedIds && assignedIds.indexOf(b.id) !== -1) || b.tatamiId === numericTatamiId);
     const activeBout = SyncService.state.bouts.find(b => b.id === tatami.activeBoutId);
 
     let html = `
@@ -105,28 +106,36 @@ const TatamiManager = {
   },
 
   openAssignModal(tatamiId) {
-    const unassignedBouts = SyncService.state.bouts.filter(b => !b.tatamiId);
-    if (unassignedBouts.length === 0) return alert('No unassigned bout sheets remaining!');
+    const numericTatamiId = parseInt(tatamiId, 10);
+    const bouts = SyncService.state.bouts || [];
+    if (bouts.length === 0) return alert('No bout sheets available! Please upload an Excel file first.');
 
-    const boutSelectOptions = unassignedBouts.map(b => `<option value="${b.id}">${b.boutName}</option>`).join('');
+    const boutSelectOptions = bouts.map(b => {
+      let statusLabel = 'Unassigned';
+      if (b.tatamiId) {
+        statusLabel = b.tatamiId === numericTatamiId ? `Assigned to Tatami ${b.tatamiId}` : `Currently on Tatami ${b.tatamiId}`;
+      }
+      return `<option value="${b.id}" ${b.tatamiId === numericTatamiId ? 'selected' : ''}>[${statusLabel}] ${b.boutName} (${b.participants ? b.participants.length : 0} competitors)</option>`;
+    }).join('');
 
     const modalHtml = `
       <div class="modal fade" id="assignBoutModal" tabindex="-1">
-        <div class="modal-dialog">
+        <div class="modal-dialog modal-lg">
           <div class="modal-content">
             <div class="modal-header bg-dark text-white">
-              <h5 class="modal-title">Assign Bout Sheet to Tatami ${tatamiId}</h5>
+              <h5 class="modal-title">🥋 Assign Bout Sheet to Tatami ${numericTatamiId}</h5>
               <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
               <label class="form-label fw-bold">Select Bout Sheet:</label>
-              <select id="assignBoutSelect" class="form-select">
+              <select id="assignBoutSelect" class="form-select form-select-lg">
                 ${boutSelectOptions}
               </select>
+              <small class="text-muted mt-2 d-block">Selecting a bout sheet assigned elsewhere will move it to Tatami ${numericTatamiId}.</small>
             </div>
             <div class="modal-footer">
               <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-              <button type="button" class="btn btn-primary" data-bs-dismiss="modal" onclick="TatamiManager.confirmAssign(${tatamiId})">Assign</button>
+              <button type="button" class="btn btn-primary fw-bold" onclick="TatamiManager.confirmAssign(${numericTatamiId})">Assign to Tatami ${numericTatamiId}</button>
             </div>
           </div>
         </div>
@@ -142,6 +151,10 @@ const TatamiManager = {
     const select = document.getElementById('assignBoutSelect');
     if (!select) return;
     const boutId = select.value;
+    if (!boutId) {
+      alert('Please select a bout sheet.');
+      return;
+    }
 
     SyncService.assignBoutToTatami(tatamiId, boutId);
 
