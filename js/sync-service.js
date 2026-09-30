@@ -32,8 +32,11 @@ const SyncService = {
   activeRoomCode: null,
   isHost: false,
 
+  AIVEN_API_URL: '/api/tournament',
+
   init() {
     this.loadFromLocal();
+    this.loadFromAivenDB();
     
     // Auto-restore room code if previously connected
     const savedRoom = localStorage.getItem('kumite_active_room_code');
@@ -48,6 +51,11 @@ const SyncService = {
         this.notifyListeners();
       }
     });
+
+    // Periodic 5-second Aiven DB background poll for multi-device live sync
+    setInterval(() => {
+      this.loadFromAivenDB();
+    }, 5000);
 
     // Firebase Cloud Sync (Only merges if valid cloud bouts exist)
     if (typeof FirebaseConfig !== 'undefined') {
@@ -66,6 +74,35 @@ const SyncService = {
           console.warn('Firebase cloud sync listener error:', err);
         }
       }
+    }
+  },
+
+  async loadFromAivenDB() {
+    try {
+      const response = await fetch(this.AIVEN_API_URL);
+      if (response.ok) {
+        const cloudData = await response.json();
+        if (cloudData && cloudData.bouts && Array.isArray(cloudData.bouts) && cloudData.bouts.length > 0) {
+          this.state = { ...this.state, ...cloudData };
+          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
+          this.notifyListeners();
+        }
+      }
+    } catch (err) {
+      // Offline fallback
+    }
+  },
+
+  async pushToAivenDB() {
+    try {
+      if (!this.state || !this.state.bouts || this.state.bouts.length === 0) return;
+      await fetch(this.AIVEN_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(this.state)
+      });
+    } catch (err) {
+      // Offline fallback
     }
   },
 
@@ -119,6 +156,7 @@ const SyncService = {
       }
       this.notifyListeners();
       this.broadcastStateToPeers();
+      this.pushToAivenDB();
 
       if (typeof FirebaseConfig !== 'undefined' && FirebaseConfig.isInitialized && FirebaseConfig.db) {
         FirebaseConfig.db.ref('kumite_tournament_data_v1').set(this.state).catch(err => {
