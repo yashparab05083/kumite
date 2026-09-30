@@ -120,6 +120,42 @@ const SyncService = {
     }
   },
 
+  async confirmResetDatabase() {
+    if (confirm('Are you sure you want to clear all tournament data and reset the database? This action will clear all existing bout sheets.')) {
+      await this.clearAllData();
+      alert('Database and local tournament data cleared successfully! You can now upload your Excel file fresh.');
+      location.reload();
+    }
+  },
+
+  async clearAllData() {
+    localStorage.removeItem(this.STORAGE_KEY);
+    localStorage.removeItem('kumite_backup_snapshot');
+    this.state = {
+      tournamentInfo: {
+        title: 'SHOTOKAN KARATE CHAMPIONSHIP',
+        date: new Date().toISOString().split('T')[0],
+        referees: ['Ref 1', 'Ref 2', 'Ref 3', 'Ref 4', 'Ref 5']
+      },
+      participants: [],
+      bouts: [],
+      brackets: {},
+      tatamis: Array.from({ length: 8 }, (_, i) => ({
+        id: i + 1,
+        name: `Tatami ${i + 1}`,
+        activeBoutId: null,
+        activeMatchNumber: null,
+        assignedBoutIds: [],
+        status: 'Empty'
+      })),
+      currentUser: this.state ? this.state.currentUser : null
+    };
+    this.notifyListeners();
+    try {
+      await fetch('/api/reset', { method: 'POST' });
+    } catch (e) {}
+  },
+
   subscribe(callback) {
     this.listeners.push(callback);
   },

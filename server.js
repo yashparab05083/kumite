@@ -96,6 +96,17 @@ app.post('/api/tournament', async (req, res) => {
   }
 });
 
+// 3. POST /api/reset - Clear/Truncate database state
+app.post('/api/reset', async (req, res) => {
+  try {
+    await dbQuery('TRUNCATE TABLE tournament_state;');
+    res.json({ success: true, message: 'Tournament database cleared successfully!' });
+  } catch (err) {
+    console.error('Reset database error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Health check endpoint
 app.get('/api/health', async (req, res) => {
   try {

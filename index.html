@@ -299,6 +299,7 @@
                 <div class="d-flex flex-wrap gap-2 mb-2">
                   <button class="btn btn-outline-primary btn-sm fw-bold" onclick="SyncService.exportJsonBackup()">💾 Save Backup (.json)</button>
                   <button class="btn btn-outline-success btn-sm fw-bold" onclick="document.getElementById('importJsonInput').click()">📂 Load Backup (.json)</button>
+                  <button class="btn btn-outline-danger btn-sm fw-bold" onclick="SyncService.confirmResetDatabase()">🗑️ Clear / Reset Database</button>
                   <input type="file" id="importJsonInput" style="display: none;" accept=".json" onchange="SyncService.importJsonBackup(event)">
                 </div>
               </div>
