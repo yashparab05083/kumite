@@ -80,23 +80,31 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('importStatus').innerText = `Parsed ${participants.length} participants. Generating bout sheets...`;
         
         const eventMode = document.getElementById('eventModeSelect') ? document.getElementById('eventModeSelect').value : 'both';
-        const bouts = ExcelImporter.generateBoutGroups(participants, eventMode);
-        const brackets = {};
+        const newBouts = ExcelImporter.generateBoutGroups(participants, eventMode);
+        const newBrackets = {};
         
-        bouts.forEach(b => {
-          brackets[b.id] = BracketEngine.createBracket(b);
+        newBouts.forEach(b => {
+          newBrackets[b.id] = BracketEngine.createBracket(b);
         });
 
-        SyncService.setBoutsAndBrackets(bouts, brackets);
+        // Append to existing accumulated tournament data
+        SyncService.appendBoutsAndBrackets(newBouts, newBrackets);
         
-        document.getElementById('importStatus').innerText = `Successfully created ${bouts.length} Bout Sheets! Auto-generating merged PDF download...`;
+        const totalBoutsCount = SyncService.state.bouts ? SyncService.state.bouts.length : newBouts.length;
+        const statusEl = document.getElementById('importStatus');
+        if (statusEl) {
+          statusEl.className = 'fw-bold text-success';
+          statusEl.innerHTML = `
+            ✅ <strong>Added ${newBouts.length} Bout Sheets!</strong><br>
+            <small class="text-muted">Total Accumulated Bout Sheets: <strong>${totalBoutsCount}</strong>. Make adjustments as needed, then click 'Download All Bout Sheets PDF' when ready.</small>
+          `;
+        }
+
         renderBoutList('boutSheetsListContainer');
         TatamiManager.renderOrganizerDashboard('tatamiDashboardContainer');
 
-        // Automatically download all bout sheets in 1 merged landscape PDF
-        setTimeout(() => {
-          BoutEditor.downloadAllBoutsPDF();
-        }, 600);
+        // Reset file input value so user can upload next file seamlessly
+        e.target.value = '';
 
       } catch (err) {
         console.error('Error importing Excel:', err);
