@@ -386,6 +386,31 @@ const SyncService = {
     this.saveToLocal();
   },
 
+  addNewBout(bout, bracket) {
+    if (!this.state.bouts) this.state.bouts = [];
+    if (!this.state.brackets) this.state.brackets = {};
+
+    const now = Date.now();
+    bout.lastUpdated = now;
+    bracket.lastUpdated = now;
+
+    this.state.bouts.push(bout);
+    this.state.brackets[bout.id] = bracket;
+
+    if (bout.tatamiId && this.state.tatamis) {
+      const tatami = this.state.tatamis.find(t => t.id === bout.tatamiId);
+      if (tatami) {
+        if (!tatami.assignedBoutIds) tatami.assignedBoutIds = [];
+        if (!tatami.assignedBoutIds.includes(bout.id)) {
+          tatami.assignedBoutIds.push(bout.id);
+        }
+        tatami.lastUpdated = now;
+      }
+    }
+
+    this.saveToLocal();
+  },
+
   assignBoutToTatami(tatamiId, boutId) {
     if (!tatamiId || !boutId) return;
     const numericTatamiId = parseInt(tatamiId, 10);

@@ -138,7 +138,7 @@ function applyUserPermissions() {
   document.getElementById('userBadge').innerText = `👤 ${user.name}`;
 
   if (user.role === 'organizer') {
-    document.querySelectorAll('.nav-organizer-only').forEach(el => el.style.display = 'block');
+    document.querySelectorAll('.nav-organizer-only').forEach(el => el.style.display = '');
     switchTab('organizer');
   } else if (user.role === 'tatami') {
     document.querySelectorAll('.nav-organizer-only').forEach(el => el.style.display = 'none');
@@ -172,19 +172,37 @@ function renderBoutList(containerId) {
   if (!container) return;
 
   const bouts = SyncService.state.bouts;
+  const isOrganizer = AuthService.currentUser && AuthService.currentUser.role === 'organizer';
+
   if (!bouts || bouts.length === 0) {
-    container.innerHTML = '<div class="alert alert-info">No bout sheets created yet. Upload a participant Excel file above to generate bout sheets.</div>';
+    container.innerHTML = `
+      <div class="alert alert-info text-center py-4">
+        <p class="mb-2">No bout sheets created yet.</p>
+        ${isOrganizer ? `
+          <button class="btn btn-primary btn-sm fw-bold shadow-sm" onclick="BoutEditor.openCreateBoutModal()">
+            ➕ Add New Bout (Kata / Kumite)
+          </button>
+        ` : ''}
+      </div>
+    `;
     return;
   }
 
   let html = `<div class="list-group">`;
 
   bouts.forEach(b => {
+    const competitorCount = b.participants ? b.participants.length : (b.eventType === 'Kata' ? (SyncService.state.brackets[b.id]?.competitors?.length || 0) : 0);
+    const eventLabel = b.eventType || 'Kumite';
+    const badgeBg = eventLabel === 'Kata' ? 'bg-info text-dark' : 'bg-danger text-white';
+
     html += `
       <div class="list-group-item d-flex justify-content-between align-items-center">
         <div style="cursor: pointer; flex: 1;" onclick="loadBoutIntoEditor('${b.id}')">
-          <h6 class="mb-0 fw-bold text-primary">${b.boutName}</h6>
-          <small class="text-muted">Code: ${b.boutCode} | ${b.participants.length} Competitors</small>
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <span class="badge ${badgeBg} fs-7">${eventLabel}</span>
+            <h6 class="mb-0 fw-bold text-primary">${b.boutName}</h6>
+          </div>
+          <small class="text-muted">Code: ${b.boutCode} | ${competitorCount} Competitors</small>
         </div>
         <div class="d-flex align-items-center gap-2">
           <select class="form-select form-select-sm fw-bold border-primary" style="width: 140px;" onchange="handleQuickTatamiAssign('${b.id}', this.value)">

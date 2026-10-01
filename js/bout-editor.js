@@ -1332,6 +1332,284 @@ const BoutEditor = {
     bootstrap.Modal.getInstance(document.getElementById('addKataCompetitorModal')).hide();
     SyncService.saveToLocal();
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
+  },
+
+  openCreateBoutModal() {
+    if (!AuthService.currentUser || AuthService.currentUser.role !== 'organizer') {
+      return alert('Access Denied: Only Tournament Organizer / Admin can create new bouts.');
+    }
+
+    const modalHtml = `
+      <div class="modal fade" id="createBoutModal" data-bs-backdrop="static" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+          <div class="modal-content shadow-lg border-2 border-primary">
+            <div class="modal-header bg-dark text-white">
+              <h5 class="modal-title fw-bold">🥋 Create New Championship Bout (Kata / Kumite)</h5>
+              <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+              <form id="createBoutForm" onsubmit="event.preventDefault(); BoutEditor.confirmCreateBout();">
+                
+                <!-- Event Type Selector -->
+                <div class="mb-3">
+                  <label class="form-label fw-bold">Select Event Type <span class="text-danger">*</span></label>
+                  <div class="d-flex gap-3">
+                    <div class="form-check form-check-inline bg-light p-3 border rounded flex-fill cursor-pointer" onclick="document.getElementById('eventTypeKumite').checked = true; BoutEditor.autoGenerateBoutName();">
+                      <input class="form-check-input" type="radio" name="createEventType" id="eventTypeKumite" value="Kumite" checked onchange="BoutEditor.autoGenerateBoutName()">
+                      <label class="form-check-label fw-bold text-danger fs-6" for="eventTypeKumite">
+                        🥊 Kumite (Sparring Match)
+                      </label>
+                      <div class="small text-muted">16-slot double pool elimination bracket</div>
+                    </div>
+                    <div class="form-check form-check-inline bg-light p-3 border rounded flex-fill cursor-pointer" onclick="document.getElementById('eventTypeKata').checked = true; BoutEditor.autoGenerateBoutName();">
+                      <input class="form-check-input" type="radio" name="createEventType" id="eventTypeKata" value="Kata" onchange="BoutEditor.autoGenerateBoutName()">
+                      <label class="form-check-label fw-bold text-primary fs-6" for="eventTypeKata">
+                        🎯 Kata (Form Performance)
+                      </label>
+                      <div class="small text-muted">5-referee score table & rankings</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="row g-3 mb-3">
+                  <!-- Age Category -->
+                  <div class="col-md-6">
+                    <label class="form-label fw-bold">Age Category <span class="text-danger">*</span></label>
+                    <select id="createBoutAgeSelect" class="form-select" onchange="BoutEditor.onCreateAgeChange(); BoutEditor.autoGenerateBoutName();">
+                      <option value="Under 8">Under 8 Years</option>
+                      <option value="Under 10">Under 10 Years</option>
+                      <option value="Under 12" selected>Under 12 Years</option>
+                      <option value="12-14 Years">12-14 Years</option>
+                      <option value="14-15 Years">14-15 Years (Cadet)</option>
+                      <option value="16-17 Years">16-17 Years (Junior)</option>
+                      <option value="Senior (18+)">Senior (18+)</option>
+                      <option value="CUSTOM">-- Custom Age Category --</option>
+                    </select>
+                    <input type="text" id="createBoutCustomAge" class="form-control mt-2" placeholder="Enter Custom Age Category" style="display: none;" oninput="BoutEditor.autoGenerateBoutName()">
+                  </div>
+
+                  <!-- Gender -->
+                  <div class="col-md-6">
+                    <label class="form-label fw-bold">Gender <span class="text-danger">*</span></label>
+                    <select id="createBoutGender" class="form-select" onchange="BoutEditor.autoGenerateBoutName()">
+                      <option value="Male" selected>Male</option>
+                      <option value="Female">Female</option>
+                      <option value="Mixed">Mixed</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="row g-3 mb-3">
+                  <!-- Belt Tier -->
+                  <div class="col-md-6">
+                    <label class="form-label fw-bold">Belt Category / Level</label>
+                    <select id="createBoutBelt" class="form-select" onchange="BoutEditor.autoGenerateBoutName()">
+                      <option value="General" selected>General / All Belts</option>
+                      <option value="White">White Belt</option>
+                      <option value="Yellow - Orange">Yellow - Orange Belts</option>
+                      <option value="Green - Blue">Green - Blue Belts</option>
+                      <option value="Brown - Black">Brown - Black Belts</option>
+                    </select>
+                  </div>
+
+                  <!-- Tatami Assignment -->
+                  <div class="col-md-6">
+                    <label class="form-label fw-bold">Assign to Tatami Ring (Optional)</label>
+                    <select id="createBoutTatami" class="form-select">
+                      <option value="">Unassigned (Assign Later)</option>
+                      <option value="1">Tatami 1</option>
+                      <option value="2">Tatami 2</option>
+                      <option value="3">Tatami 3</option>
+                      <option value="4">Tatami 4</option>
+                      <option value="5">Tatami 5</option>
+                      <option value="6">Tatami 6</option>
+                      <option value="7">Tatami 7</option>
+                      <option value="8">Tatami 8</option>
+                    </select>
+                  </div>
+                </div>
+
+                <!-- Bout Name / Title -->
+                <div class="mb-3">
+                  <label class="form-label fw-bold">Bout Sheet Title <span class="text-danger">*</span></label>
+                  <input type="text" id="createBoutName" class="form-control fw-bold text-primary" placeholder="e.g. Under 12 Male Kumite Bout A" required>
+                  <div class="form-text">Official title printed on bout sheets and displayed on scoreboards.</div>
+                </div>
+
+                <!-- Initial Competitors List (Optional) -->
+                <div class="mb-3">
+                  <label class="form-label fw-bold">Initial Competitors / Participants (Optional)</label>
+                  <textarea id="createBoutParticipantsText" class="form-control font-monospace" rows="4" placeholder="Enter competitor names, one per line. Optional format: Name - Dojo or Name (Dojo)&#10;e.g.&#10;John Smith - Shotokan Central&#10;Maria Garcia (Eagle Dojo)&#10;Kenji Sato"></textarea>
+                  <div class="form-text">Leave empty to create an empty bout template. Competitors can be added anytime later.</div>
+                </div>
+
+                <div class="modal-footer px-0 pb-0 pt-3 border-top">
+                  <button type="button" class="btn btn-secondary fw-bold" data-bs-dismiss="modal">Cancel</button>
+                  <button type="submit" class="btn btn-primary fw-bold px-4">⚡ Create Bout Sheet</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('modalContainer').innerHTML = modalHtml;
+    const modal = new bootstrap.Modal(document.getElementById('createBoutModal'));
+    modal.show();
+
+    this.autoGenerateBoutName();
+  },
+
+  onCreateAgeChange() {
+    const ageSelect = document.getElementById('createBoutAgeSelect');
+    const customInput = document.getElementById('createBoutCustomAge');
+    if (ageSelect && customInput) {
+      if (ageSelect.value === 'CUSTOM') {
+        customInput.style.display = 'block';
+        customInput.focus();
+      } else {
+        customInput.style.display = 'none';
+      }
+    }
+  },
+
+  autoGenerateBoutName() {
+    const nameInput = document.getElementById('createBoutName');
+    if (!nameInput) return;
+
+    const eventTypeEl = document.querySelector('input[name="createEventType"]:checked');
+    const eventType = eventTypeEl ? eventTypeEl.value : 'Kumite';
+
+    const ageSelect = document.getElementById('createBoutAgeSelect');
+    const customAgeInput = document.getElementById('createBoutCustomAge');
+    let age = 'Under 12';
+    if (ageSelect) {
+      if (ageSelect.value === 'CUSTOM') {
+        age = (customAgeInput && customAgeInput.value.trim()) ? customAgeInput.value.trim() : 'Custom';
+      } else {
+        age = ageSelect.value;
+      }
+    }
+
+    const gender = document.getElementById('createBoutGender') ? document.getElementById('createBoutGender').value : 'Male';
+    const belt = document.getElementById('createBoutBelt') ? document.getElementById('createBoutBelt').value : 'General';
+
+    const beltStr = (belt && belt !== 'General') ? ` (${belt})` : '';
+
+    const existingBouts = SyncService.state.bouts || [];
+    const matchingCount = existingBouts.filter(b => 
+      (b.eventType || 'Kumite') === eventType && 
+      (b.ageCategory || '').toLowerCase() === age.toLowerCase() &&
+      (b.gender || '').toLowerCase() === gender.toLowerCase()
+    ).length;
+
+    const letterCode = String.fromCharCode(65 + (matchingCount % 26));
+
+    const generatedTitle = `${age} ${gender}${beltStr} ${eventType} Bout ${letterCode}`;
+    nameInput.value = generatedTitle;
+  },
+
+  parseCompetitorsText(text, defaultAge, defaultGender, defaultBelt) {
+    if (!text || !text.trim()) return [];
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+    return lines.map((line, idx) => {
+      let name = line;
+      let branch = 'General';
+
+      if (line.includes(' - ')) {
+        const parts = line.split(' - ');
+        name = parts[0].trim();
+        branch = parts.slice(1).join(' - ').trim();
+      } else if (line.includes(' / ')) {
+        const parts = line.split(' / ');
+        name = parts[0].trim();
+        branch = parts.slice(1).join(' / ').trim();
+      } else {
+        const match = line.match(/^(.+?)\s*\((.+?)\)$/);
+        if (match) {
+          name = match[1].trim();
+          branch = match[2].trim();
+        }
+      }
+
+      return {
+        id: 'p_manual_' + Math.random().toString(36).substr(2, 7),
+        name: this.cleanParticipantName(name),
+        branch: branch || 'General',
+        dojo: branch || 'General',
+        age: defaultAge || 'General',
+        gender: defaultGender || 'Mixed',
+        beltLabel: defaultBelt || 'General',
+        beltTier: defaultBelt || 'General'
+      };
+    });
+  },
+
+  confirmCreateBout() {
+    if (!AuthService.currentUser || AuthService.currentUser.role !== 'organizer') {
+      return alert('Access Denied: Only Tournament Organizer / Admin can create new bouts.');
+    }
+
+    const eventTypeEl = document.querySelector('input[name="createEventType"]:checked');
+    const eventType = eventTypeEl ? eventTypeEl.value : 'Kumite';
+
+    const ageSelect = document.getElementById('createBoutAgeSelect');
+    const customAgeInput = document.getElementById('createBoutCustomAge');
+    let ageCategory = 'Under 12';
+    if (ageSelect) {
+      if (ageSelect.value === 'CUSTOM') {
+        ageCategory = (customAgeInput && customAgeInput.value.trim()) ? customAgeInput.value.trim() : 'Custom Category';
+      } else {
+        ageCategory = ageSelect.value;
+      }
+    }
+
+    const gender = document.getElementById('createBoutGender').value;
+    const beltTier = document.getElementById('createBoutBelt').value;
+    const tatamiIdVal = document.getElementById('createBoutTatami').value;
+    const boutName = document.getElementById('createBoutName').value.trim();
+    const participantsText = document.getElementById('createBoutParticipantsText').value;
+
+    if (!boutName) {
+      return alert('Bout Sheet Title is required!');
+    }
+
+    const parsedParticipants = this.parseCompetitorsText(participantsText, ageCategory, gender, beltTier);
+    const numericTatamiId = tatamiIdVal ? parseInt(tatamiIdVal, 10) : null;
+
+    const cleanAgeCode = ageCategory.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const boutId = 'bout_' + eventType.toLowerCase() + '_' + Math.random().toString(36).substr(2, 9);
+    const boutCode = `${cleanAgeCode}_${eventType.toLowerCase()}_${Date.now().toString(36)}`;
+
+    const boutObj = {
+      id: boutId,
+      boutCode: boutCode,
+      boutName: boutName,
+      eventType: eventType,
+      ageCategory: ageCategory,
+      gender: gender,
+      beltTier: beltTier,
+      beltLabel: beltTier,
+      participants: parsedParticipants,
+      status: numericTatamiId ? 'Assigned' : 'Pending',
+      tatamiId: numericTatamiId
+    };
+
+    const bracketObj = BracketEngine.createBracket(boutObj);
+    if (numericTatamiId) {
+      bracketObj.tatamiId = numericTatamiId;
+    }
+
+    SyncService.addNewBout(boutObj, bracketObj);
+
+    const modalEl = document.getElementById('createBoutModal');
+    if (modalEl) {
+      const modalInstance = bootstrap.Modal.getInstance(modalEl);
+      if (modalInstance) modalInstance.hide();
+    }
+
+    loadBoutIntoEditor(boutId);
   }
 };
 
