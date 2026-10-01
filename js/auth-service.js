@@ -6,7 +6,7 @@
 const AuthService = {
   // Pre-configured Credentials
   USERS: {
-    'organizer': { password: 'admin123', role: 'organizer', name: 'Main Organizer / Tournament Director' },
+    'organizer': { password: 'aiskf@12345677', role: 'organizer', name: 'Main Organizer / Tournament Director' },
     'tatami1': { password: 'tatami1pass', role: 'tatami', tatamiId: 1, name: 'Tatami 1 Operator' },
     'tatami2': { password: 'tatami2pass', role: 'tatami', tatamiId: 2, name: 'Tatami 2 Operator' },
     'tatami3': { password: 'tatami3pass', role: 'tatami', tatamiId: 3, name: 'Tatami 3 Operator' },
