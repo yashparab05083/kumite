@@ -231,7 +231,22 @@ const BoutEditor = {
       ${bracket.eventType === 'Kata' ? this.generateKataScoreSheetHTML(bracket, isOrganizer) : this.generateBoutSheetHTML(bracket, isOrganizer)}
     `;
 
+    const activeEl = document.activeElement;
+    const activeId = (activeEl && activeEl.id) ? activeEl.id : null;
+    const selStart = (activeEl && typeof activeEl.selectionStart === 'number') ? activeEl.selectionStart : null;
+    const selEnd = (activeEl && typeof activeEl.selectionEnd === 'number') ? activeEl.selectionEnd : null;
+
     container.innerHTML = html;
+
+    if (activeId) {
+      const newEl = document.getElementById(activeId);
+      if (newEl) {
+        newEl.focus();
+        if (selStart !== null && selEnd !== null) {
+          try { newEl.setSelectionRange(selStart, selEnd); } catch (e) {}
+        }
+      }
+    }
   },
 
   async submitAndFinishBout(boutId) {
@@ -719,14 +734,14 @@ const BoutEditor = {
                   `;
                 }
 
-                const placeLabel = comp.place ? (
+                const placeLabel = (comp.hasScored && comp.place) ? (
                   comp.place === 1 ? '🥇 1st' :
                   comp.place === 2 ? '🥈 2nd' :
                   comp.place === 3 ? '🥉 3rd' :
                   comp.place === 4 ? '🥉 3rd' : `${comp.place}th`
                 ) : '-';
 
-                const placeClass = comp.place ? (comp.place <= 2 ? 'fw-bold text-success' : (comp.place <= 4 ? 'fw-bold text-warning text-dark' : '')) : '';
+                const placeClass = (comp.hasScored && comp.place) ? (comp.place <= 2 ? 'fw-bold text-success' : (comp.place <= 4 ? 'fw-bold text-warning text-dark' : '')) : '';
 
                 return `
                   <tr>
@@ -742,19 +757,27 @@ const BoutEditor = {
                         ` : ''}
                       </div>
                     </td>
-                    ${[0, 1, 2, 3, 4].map(refIdx => `
-                      <td>
-                        ${canScoreKata ? `
-                          <input type="number" step="0.1" min="0" max="10" class="form-control form-control-sm text-center py-0 px-1 fs-7"
-                            value="${comp.scores[refIdx] || ''}" 
-                            onchange="BoutEditor.updateKataScore('${bracket.boutId}', '${comp.id}', ${refIdx}, this.value)">
-                        ` : `
-                          <span class="fw-semibold">${comp.scores[refIdx] ? comp.scores[refIdx].toFixed(1) : '-'}</span>
-                        `}
-                      </td>
-                    `).join('')}
-                    <td class="fw-bold fs-6 text-primary">${comp.totalScore ? comp.totalScore.toFixed(2) : '0.00'}</td>
-                    <td class="${placeClass} fs-6">${placeLabel}</td>
+                    ${[0, 1, 2, 3, 4].map(refIdx => {
+                      const scoreVal = (comp.scores && comp.scores[refIdx] !== undefined && comp.scores[refIdx] !== null) ? Number(comp.scores[refIdx]).toFixed(1) : '5.0';
+                      return `
+                        <td>
+                          ${canScoreKata ? `
+                            <input type="number" step="0.1" min="0" max="10" 
+                              id="kataInput_${bracket.boutId}_${comp.id}_${refIdx}"
+                              class="form-control form-control-sm text-center py-0 px-1 fs-7"
+                              value="${scoreVal}" 
+                              onfocus="BoutEditor.onKataScoreFocus('${bracket.boutId}', '${comp.id}')"
+                              onclick="BoutEditor.onKataScoreFocus('${bracket.boutId}', '${comp.id}')"
+                              oninput="BoutEditor.updateKataScore('${bracket.boutId}', '${comp.id}', ${refIdx}, this.value)"
+                              onchange="BoutEditor.updateKataScore('${bracket.boutId}', '${comp.id}', ${refIdx}, this.value)">
+                          ` : `
+                            <span class="fw-semibold">${scoreVal}</span>
+                          `}
+                        </td>
+                      `;
+                    }).join('')}
+                    <td class="fw-bold fs-6 text-primary kata-total-${comp.id}">${comp.hasScored && comp.totalScore ? comp.totalScore.toFixed(2) : '0.00'}</td>
+                    <td class="kata-place-${comp.id} ${placeClass} fs-6">${placeLabel}</td>
                   </tr>
                 `;
               }).join('')}
@@ -763,7 +786,7 @@ const BoutEditor = {
         </div>
 
         <!-- MEDALS & REFEREES FOOTER -->
-        <div class="border-top mt-3 pt-2">
+        <div class="border-top mt-3 pt-2 kata-medals-footer-${bracket.boutId}">
           <div class="row text-center fw-bold fs-6 mb-2">
             <div class="col-3 text-warning">🥇 GOLD: <span class="text-dark">${goldName}</span></div>
             <div class="col-3 text-secondary">🥈 SILVER: <span class="text-dark">${silverName}</span></div>
@@ -782,6 +805,25 @@ const BoutEditor = {
     `;
   },
 
+  onKataScoreFocus(boutId, compId) {
+    const bracket = SyncService.state.brackets[boutId];
+    if (!bracket || bracket.eventType !== 'Kata') return;
+
+    const comp = bracket.competitors.find(c => c.id === compId);
+    if (!comp) return;
+
+    if (!comp.hasScored) {
+      comp.hasScored = true;
+      if (!Array.isArray(comp.scores) || comp.scores.length !== 5) {
+        comp.scores = [5.0, 5.0, 5.0, 5.0, 5.0];
+      }
+      BracketEngine.recalculateKataRanks(bracket);
+      SyncService.checkBoutCompletion(boutId);
+      SyncService.saveToLocalOnly();
+      this.updateKataDOM(boutId);
+    }
+  },
+
   updateKataScore(boutId, compId, refIndex, val) {
     const bracket = SyncService.state.brackets[boutId];
     if (!bracket || bracket.eventType !== 'Kata') return;
@@ -789,16 +831,81 @@ const BoutEditor = {
     const comp = bracket.competitors.find(c => c.id === compId);
     if (!comp) return;
 
-    const scoreNum = parseFloat(val) || 0;
+    comp.hasScored = true;
+    if (!Array.isArray(comp.scores) || comp.scores.length !== 5) {
+      comp.scores = [5.0, 5.0, 5.0, 5.0, 5.0];
+    }
+
+    const scoreNum = val === '' ? 5.0 : (parseFloat(val) || 0);
     comp.scores[refIndex] = scoreNum;
 
+    const prevActiveTie = bracket.tieBreaker ? bracket.tieBreaker.activeTie : null;
     BracketEngine.recalculateKataRanks(bracket);
     SyncService.checkBoutCompletion(boutId);
     SyncService.saveToLocalOnly();
-    this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
-    const ringContainer = document.getElementById('ringBoutContainer');
-    if (ringContainer) {
-      this.renderBoutSheet(boutId, 'ringBoutContainer');
+
+    const newActiveTie = bracket.tieBreaker ? bracket.tieBreaker.activeTie : null;
+    if (prevActiveTie !== newActiveTie) {
+      this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
+      const ringContainer = document.getElementById('ringBoutContainer');
+      if (ringContainer) {
+        this.renderBoutSheet(boutId, 'ringBoutContainer');
+      }
+    } else {
+      this.updateKataDOM(boutId);
+    }
+  },
+
+  updateKataDOM(boutId) {
+    const bracket = SyncService.state.brackets[boutId];
+    if (!bracket || bracket.eventType !== 'Kata') return;
+
+    bracket.competitors.forEach(comp => {
+      const totalEls = document.querySelectorAll(`.kata-total-${comp.id}`);
+      totalEls.forEach(el => {
+        el.textContent = (comp.hasScored && comp.totalScore) ? comp.totalScore.toFixed(2) : '0.00';
+      });
+
+      const placeEls = document.querySelectorAll(`.kata-place-${comp.id}`);
+      placeEls.forEach(el => {
+        const placeLabel = (comp.hasScored && comp.place) ? (
+          comp.place === 1 ? '🥇 1st' :
+          comp.place === 2 ? '🥈 2nd' :
+          comp.place === 3 ? '🥉 3rd' :
+          comp.place === 4 ? '🥉 3rd' : `${comp.place}th`
+        ) : '-';
+
+        const placeClass = (comp.hasScored && comp.place) ? (comp.place <= 2 ? 'fw-bold text-success' : (comp.place <= 4 ? 'fw-bold text-warning text-dark' : '')) : '';
+        el.textContent = placeLabel;
+        el.className = `kata-place-${comp.id} ${placeClass} fs-6`;
+      });
+    });
+
+    const footerEls = document.querySelectorAll(`.kata-medals-footer-${bracket.boutId}`);
+    if (footerEls.length > 0) {
+      const medals = bracket.medals || {};
+      const goldName = medals.gold ? this.cleanParticipantName(medals.gold.name) : '_______';
+      const silverName = medals.silver ? this.cleanParticipantName(medals.silver.name) : '_______';
+      const bronze1Name = medals.bronze1 ? this.cleanParticipantName(medals.bronze1.name) : '_______';
+      const bronze2Name = medals.bronze2 ? this.cleanParticipantName(medals.bronze2.name) : '_______';
+
+      const footerHTML = `
+        <div class="row text-center fw-bold fs-6 mb-2">
+          <div class="col-3 text-warning">🥇 GOLD: <span class="text-dark">${goldName}</span></div>
+          <div class="col-3 text-secondary">🥈 SILVER: <span class="text-dark">${silverName}</span></div>
+          <div class="col-3 text-danger">🥉 BRONZE 1: <span class="text-dark">${bronze1Name}</span></div>
+          <div class="col-3 text-danger">🥉 BRONZE 2: <span class="text-dark">${bronze2Name}</span></div>
+        </div>
+        <div class="d-flex justify-content-between text-muted fs-7 border-top pt-2">
+          <span>Referee 1: ____________</span>
+          <span>Referee 2: ____________</span>
+          <span>Referee 3: ____________</span>
+          <span>Referee 4: ____________</span>
+          <span>Referee 5: ____________</span>
+        </div>
+      `;
+
+      footerEls.forEach(el => el.innerHTML = footerHTML);
     }
   },
 

@@ -224,8 +224,8 @@ async function run() {
           tatamiId: 3,
           lastUpdated: now,
           competitors: [
-            { id: 'p5', name: 'Rahul Joshi', scores: [0, 0, 0, 0, 0], totalScore: 0, place: null },
-            { id: 'p6', name: 'Sameer Sen', scores: [0, 0, 0, 0, 0], totalScore: 0, place: null }
+            { id: 'p5', name: 'Rahul Joshi', scores: [5.0, 5.0, 5.0, 5.0, 5.0], hasScored: false, totalScore: 0, place: null },
+            { id: 'p6', name: 'Sameer Sen', scores: [5.0, 5.0, 5.0, 5.0, 5.0], hasScored: false, totalScore: 0, place: null }
           ],
           tieBreaker: { flagVote: null, rescoreRound: null }
         }
@@ -286,6 +286,7 @@ async function run() {
     const t3Payload = JSON.parse(JSON.stringify(tournamentState));
     const bracket3 = t3Payload.brackets['bout_kata_open'];
     bracket3.competitors[0].scores = [8.2, 8.4, 8.5, 8.3, 8.6];
+    bracket3.competitors[0].hasScored = true;
     bracket3.competitors[0].totalScore = 42.0;
     bracket3.competitors[0].place = 1;
     bracket3.lastUpdated = t3Time;

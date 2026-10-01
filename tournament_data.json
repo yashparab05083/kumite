@@ -2,20 +2,90 @@
   "tournamentInfo": {
     "title": "SHOTOKAN KARATE CHAMPIONSHIP",
     "date": "2026-10-01",
-    "referees": ["Sensei A", "Sensei B", "Sensei C", "Sensei D", "Sensei E"]
+    "referees": [
+      "Ref 1",
+      "Ref 2",
+      "Ref 3",
+      "Ref 4",
+      "Ref 5"
+    ]
   },
   "participants": [],
   "bouts": [],
   "brackets": {},
   "tatamis": [
-    { "id": 1, "name": "Tatami 1", "activeBoutId": null, "activeMatchNumber": null, "assignedBoutIds": [], "status": "Empty", "lastUpdated": 0 },
-    { "id": 2, "name": "Tatami 2", "activeBoutId": null, "activeMatchNumber": null, "assignedBoutIds": [], "status": "Empty", "lastUpdated": 0 },
-    { "id": 3, "name": "Tatami 3", "activeBoutId": null, "activeMatchNumber": null, "assignedBoutIds": [], "status": "Empty", "lastUpdated": 0 },
-    { "id": 4, "name": "Tatami 4", "activeBoutId": null, "activeMatchNumber": null, "assignedBoutIds": [], "status": "Empty", "lastUpdated": 0 },
-    { "id": 5, "name": "Tatami 5", "activeBoutId": null, "activeMatchNumber": null, "assignedBoutIds": [], "status": "Empty", "lastUpdated": 0 },
-    { "id": 6, "name": "Tatami 6", "activeBoutId": null, "activeMatchNumber": null, "assignedBoutIds": [], "status": "Empty", "lastUpdated": 0 },
-    { "id": 7, "name": "Tatami 7", "activeBoutId": null, "activeMatchNumber": null, "assignedBoutIds": [], "status": "Empty", "lastUpdated": 0 },
-    { "id": 8, "name": "Tatami 8", "activeBoutId": null, "activeMatchNumber": null, "assignedBoutIds": [], "status": "Empty", "lastUpdated": 0 }
+    {
+      "id": 1,
+      "name": "Tatami 1",
+      "activeBoutId": null,
+      "activeMatchNumber": null,
+      "assignedBoutIds": [],
+      "status": "Empty",
+      "lastUpdated": 0
+    },
+    {
+      "id": 2,
+      "name": "Tatami 2",
+      "activeBoutId": null,
+      "activeMatchNumber": null,
+      "assignedBoutIds": [],
+      "status": "Empty",
+      "lastUpdated": 0
+    },
+    {
+      "id": 3,
+      "name": "Tatami 3",
+      "activeBoutId": null,
+      "activeMatchNumber": null,
+      "assignedBoutIds": [],
+      "status": "Empty",
+      "lastUpdated": 0
+    },
+    {
+      "id": 4,
+      "name": "Tatami 4",
+      "activeBoutId": null,
+      "activeMatchNumber": null,
+      "assignedBoutIds": [],
+      "status": "Empty",
+      "lastUpdated": 0
+    },
+    {
+      "id": 5,
+      "name": "Tatami 5",
+      "activeBoutId": null,
+      "activeMatchNumber": null,
+      "assignedBoutIds": [],
+      "status": "Empty",
+      "lastUpdated": 0
+    },
+    {
+      "id": 6,
+      "name": "Tatami 6",
+      "activeBoutId": null,
+      "activeMatchNumber": null,
+      "assignedBoutIds": [],
+      "status": "Empty",
+      "lastUpdated": 0
+    },
+    {
+      "id": 7,
+      "name": "Tatami 7",
+      "activeBoutId": null,
+      "activeMatchNumber": null,
+      "assignedBoutIds": [],
+      "status": "Empty",
+      "lastUpdated": 0
+    },
+    {
+      "id": 8,
+      "name": "Tatami 8",
+      "activeBoutId": null,
+      "activeMatchNumber": null,
+      "assignedBoutIds": [],
+      "status": "Empty",
+      "lastUpdated": 0
+    }
   ],
   "currentUser": null,
   "lastUpdated": 0

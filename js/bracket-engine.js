@@ -409,7 +409,8 @@ const BracketEngine = {
       branch: p.branch,
       age: p.age,
       beltLabel: p.beltLabel,
-      scores: [0, 0, 0, 0, 0],
+      scores: [5.0, 5.0, 5.0, 5.0, 5.0],
+      hasScored: false,
       totalScore: 0,
       place: null
     }));
@@ -468,7 +469,15 @@ const BracketEngine = {
     if (!bracket || bracket.eventType !== 'Kata') return;
 
     bracket.competitors.forEach(comp => {
-      if (Array.isArray(comp.scores)) {
+      if (!Array.isArray(comp.scores) || comp.scores.length !== 5) {
+        comp.scores = [5.0, 5.0, 5.0, 5.0, 5.0];
+      }
+      if (comp.hasScored === undefined) {
+        const hasNonDefaultScore = comp.scores.some(s => parseFloat(s) !== 5.0 && parseFloat(s) !== 0);
+        comp.hasScored = (comp.totalScore > 0) || hasNonDefaultScore;
+      }
+
+      if (comp.hasScored) {
         const sum = comp.scores.reduce((acc, val) => acc + (parseFloat(val) || 0), 0);
         comp.totalScore = Math.round(sum * 100) / 100;
       } else {
@@ -476,7 +485,7 @@ const BracketEngine = {
       }
     });
 
-    const activeScored = bracket.competitors.filter(c => c.totalScore > 0);
+    const activeScored = bracket.competitors.filter(c => c.hasScored && c.totalScore > 0);
 
     // Reset places and medals
     bracket.competitors.forEach(c => c.place = null);
