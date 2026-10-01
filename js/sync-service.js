@@ -33,6 +33,7 @@ const SyncService = {
   isHost: false,
 
   AIVEN_API_URL: '/api/tournament',
+  GITHUB_RAW_URL: 'https://raw.githubusercontent.com/yashparab05083/kumite/main/tournament_data.json',
 
   init() {
     this.loadFromLocal();
@@ -53,7 +54,7 @@ const SyncService = {
       }
     });
 
-    // Periodic 5-second Aiven DB background poll for multi-device live sync
+    // Periodic 5-second background poll for multi-device live sync
     setInterval(() => {
       this.loadFromAivenDB();
     }, 5000);
@@ -117,7 +118,7 @@ const SyncService = {
 
   async loadFromAivenDB() {
     try {
-      // Skip cloud pull if local edit happened within last 4 seconds or a push is in-flight
+      // Skip pull if local edit happened within last 4 seconds or a push is in-flight
       if (this.isPushing || (this.lastLocalEditTime && (Date.now() - this.lastLocalEditTime < 4000))) {
         return;
       }
@@ -127,21 +128,37 @@ const SyncService = {
         headers['If-None-Match'] = this.lastEtag;
       }
 
-      const response = await fetch(this.AIVEN_API_URL, { headers });
-      if (response.status === 304) {
-        return; // Data has not changed; zero payload & zero DOM re-render overhead!
+      let cloudData = null;
+
+      try {
+        const response = await fetch(this.AIVEN_API_URL, { headers });
+        if (response.status === 304) {
+          return; // Data has not changed; zero payload & zero DOM re-render overhead!
+        }
+
+        if (response.ok) {
+          const etag = response.headers.get('ETag');
+          if (etag) this.lastEtag = etag;
+          cloudData = await response.json();
+        }
+      } catch (e) {
+        // Server fetch failed; fall through to GitHub Raw URL
       }
 
-      if (response.ok) {
-        const etag = response.headers.get('ETag');
-        if (etag) this.lastEtag = etag;
+      // GitHub Raw Repo Fallback if Server is offline or empty
+      if (!cloudData || !cloudData.bouts || cloudData.bouts.length === 0) {
+        try {
+          const ghRes = await fetch(this.GITHUB_RAW_URL + '?t=' + Date.now());
+          if (ghRes.ok) {
+            cloudData = await ghRes.json();
+          }
+        } catch (e) {}
+      }
 
-        const cloudData = await response.json();
-        if (cloudData && cloudData.bouts && Array.isArray(cloudData.bouts) && cloudData.bouts.length > 0) {
-          this.state = { ...this.state, ...cloudData };
-          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
-          this.notifyListeners();
-        }
+      if (cloudData && cloudData.bouts && Array.isArray(cloudData.bouts) && cloudData.bouts.length > 0) {
+        this.state = { ...this.state, ...cloudData };
+        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
+        this.notifyListeners();
       }
     } catch (err) {
       // Offline fallback

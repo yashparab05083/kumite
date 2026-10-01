@@ -45,8 +45,11 @@ function updateEtag() {
   }
 }
 
-// Initialize Storage: Load from local tournament_data.json on server start
-function initStorage() {
+const GITHUB_SEED_URL = 'https://raw.githubusercontent.com/yashparab05083/kumite/main/tournament_data.json';
+const https = require('https');
+
+// Initialize Storage: Load from local tournament_data.json or GitHub seed on server start
+async function initStorage() {
   try {
     if (fs.existsSync(DATA_FILE)) {
       const raw = fs.readFileSync(DATA_FILE, 'utf8');
@@ -54,13 +57,34 @@ function initStorage() {
         ramCache = JSON.parse(raw);
         updateEtag();
         console.log('⚡ Loaded tournament state from single local file: tournament_data.json');
+        return;
       }
-    } else {
-      console.log('📁 Local storage file tournament_data.json not found. Initializing clean state.');
     }
   } catch (err) {
     console.error('Error reading local tournament_data.json:', err.message);
   }
+
+  // Fallback: Seed from GitHub Raw Repository
+  try {
+    console.log('🌐 Fetching latest seed tournament data from GitHub repository...');
+    https.get(GITHUB_SEED_URL, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          if (res.statusCode === 200 && data.trim().length > 0) {
+            const parsed = JSON.parse(data);
+            if (parsed && parsed.bouts && parsed.bouts.length > 0) {
+              ramCache = parsed;
+              updateEtag();
+              fs.writeFileSync(DATA_FILE, JSON.stringify(ramCache, null, 2), 'utf8');
+              console.log('⚡ Seeded tournament state successfully from GitHub repository!');
+            }
+          }
+        } catch (e) {}
+      });
+    }).on('error', () => {});
+  } catch (e) {}
 }
 
 initStorage();
