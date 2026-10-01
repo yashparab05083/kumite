@@ -555,7 +555,7 @@ const BoutEditor = {
               ${participant ? `
                 <div class="card mb-3 p-2 bg-light">
                   <h6 class="fw-bold mb-1">${participant.name}</h6>
-                  <small class="text-muted">Branch: ${participant.branch || 'Dojo'} | Belt: ${participant.beltLabel || 'White'}</small>
+                  <small class="text-muted">Belt: ${participant.beltLabel || 'White'}</small>
                 </div>
               ` : `
                 <div class="alert alert-warning py-2 small">This slot is currently BYE (Empty).</div>
@@ -738,7 +738,7 @@ const BoutEditor = {
               ${rescoreComps.map((rc, idx) => `
                 <tr>
                   <td class="fw-bold">${idx + 1}</td>
-                  <td class="text-start fw-bold">${this.cleanParticipantName(rc.name)} <small class="text-muted">(${rc.branch || 'Dojo'})</small></td>
+                  <td class="text-start fw-bold">${this.cleanParticipantName(rc.name)}</td>
                   ${[0, 1, 2, 3, 4].map(refIdx => {
                     const scoreVal = (rc.scores && rc.scores[refIdx] !== undefined && rc.scores[refIdx] !== null) ? Number(rc.scores[refIdx]).toFixed(1) : '5.0';
                     return `
@@ -833,7 +833,6 @@ const BoutEditor = {
                       <div class="d-flex justify-content-between align-items-center">
                         <div>
                           <span class="fw-bold">${this.cleanParticipantName(comp.name)}</span>
-                          <small class="text-muted ms-1">(${comp.branch || 'Dojo'})</small>
                         </div>
                         ${(isOrganizer && this.isEditMode) ? `
                           <button class="btn btn-xs btn-light py-0 px-1 ms-1 border fs-7 print-hide flex-shrink-0" onclick="event.stopPropagation(); BoutEditor.openKataCompetitorModal('${bracket.boutId}', '${comp.id}')">⚙️</button>
@@ -1145,7 +1144,7 @@ const BoutEditor = {
             <div class="modal-body">
               <div class="card mb-3 p-2 bg-light">
                 <h6 class="fw-bold mb-1">${this.cleanParticipantName(comp.name)}</h6>
-                <small class="text-muted">Branch: ${comp.branch || 'Dojo'} | Age: ${comp.age || 'N/A'}</small>
+                <small class="text-muted">Age: ${comp.age || 'N/A'}</small>
               </div>
 
               <!-- 1. EDIT COMPETITOR DETAILS -->

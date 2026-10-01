@@ -27,11 +27,8 @@ const ScoreboardController = {
     // Populate Scoreboard Headers
     const redName = match.aka ? match.aka.name : 'BYE';
     const blueName = match.aao ? match.aao.name : 'BYE';
-    const redDojo = match.aka ? match.aka.branch : '';
-    const blueDojo = match.aao ? match.aao.branch : '';
-
-    document.getElementById('akaFighterName').innerText = `${redName} (${redDojo})`;
-    document.getElementById('aaoFighterName').innerText = `${blueName} (${blueDojo})`;
+    document.getElementById('akaFighterName').innerText = redName;
+    document.getElementById('aaoFighterName').innerText = blueName;
     const categoryTitleElem = document.getElementById('matchCategoryTitle');
     if (categoryTitleElem) {
       categoryTitleElem.innerText = `${bracket.boutName} - Match #${matchNumber} (${match.roundName})`;
