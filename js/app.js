@@ -28,6 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('loginError').style.display = 'none';
         loginModal.hide();
         applyUserPermissions();
+        SyncService.loadFromAivenDB();
       } else {
         const errEl = document.getElementById('loginError');
         errEl.innerText = res.message;
@@ -112,11 +113,16 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Initial Render Subscription
+  // Initial & Live State Change Subscription
   SyncService.subscribe((state) => {
-    if (AuthService.currentUser && AuthService.currentUser.role === 'organizer') {
-      renderBoutList('boutSheetsListContainer');
-      TatamiManager.renderOrganizerDashboard('tatamiDashboardContainer');
+    const user = AuthService.currentUser;
+    if (user) {
+      if (user.role === 'organizer') {
+        renderBoutList('boutSheetsListContainer');
+        TatamiManager.renderOrganizerDashboard('tatamiDashboardContainer');
+      } else if (user.role === 'tatami') {
+        TatamiManager.renderOperatorView(user.tatamiId, 'tatamiOperatorContainer');
+      }
     }
   });
 });

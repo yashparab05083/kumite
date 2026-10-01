@@ -94,14 +94,9 @@ const SyncService = {
         try {
           const cloudData = JSON.parse(event.data);
           if (cloudData && cloudData.bouts && Array.isArray(cloudData.bouts) && cloudData.bouts.length > 0) {
-            const localLastUpdated = (this.state && this.state.lastUpdated) || 0;
-            const cloudLastUpdated = cloudData.lastUpdated || 0;
-
-            if (!this.state.bouts || this.state.bouts.length === 0 || cloudLastUpdated >= localLastUpdated) {
-              this.state = { ...this.state, ...cloudData };
-              localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
-              this.notifyListeners();
-            }
+            this.state = { ...this.state, ...cloudData };
+            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
+            this.notifyListeners();
           }
         } catch (e) {
           console.warn('WS JSON parse error:', e);
@@ -143,15 +138,9 @@ const SyncService = {
 
         const cloudData = await response.json();
         if (cloudData && cloudData.bouts && Array.isArray(cloudData.bouts) && cloudData.bouts.length > 0) {
-          const localLastUpdated = (this.state && this.state.lastUpdated) || 0;
-          const cloudLastUpdated = cloudData.lastUpdated || 0;
-
-          // Only accept cloud data if cloud data is NEWER than local state or local state has no bouts
-          if (!this.state.bouts || this.state.bouts.length === 0 || cloudLastUpdated > localLastUpdated) {
-            this.state = { ...this.state, ...cloudData };
-            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
-            this.notifyListeners();
-          }
+          this.state = { ...this.state, ...cloudData };
+          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
+          this.notifyListeners();
         }
       }
     } catch (err) {

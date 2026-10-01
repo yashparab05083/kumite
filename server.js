@@ -82,9 +82,7 @@ function scheduleFileSave(jsonStr) {
     latestPendingStateJson = null;
 
     try {
-      const tmpFile = DATA_FILE + '.tmp';
-      await fs.promises.writeFile(tmpFile, dataToSave, 'utf8');
-      await fs.promises.rename(tmpFile, DATA_FILE);
+      await fs.promises.writeFile(DATA_FILE, dataToSave, 'utf8');
       console.log('💾 Tournament state saved to local file (tournament_data.json)');
     } catch (err) {
       console.error('Local File Save Error:', err.message);
