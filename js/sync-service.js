@@ -120,6 +120,9 @@ const SyncService = {
         try {
           const cloudData = JSON.parse(event.data);
           if (cloudData && cloudData.bouts && Array.isArray(cloudData.bouts) && cloudData.bouts.length > 0) {
+            if (this.lastLocalEditTime && (Date.now() - this.lastLocalEditTime < 30000)) {
+              return; // Protect active local editing from background socket overwrite
+            }
             this.state = { ...this.state, ...cloudData };
             localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
             this.notifyListeners();
@@ -143,8 +146,8 @@ const SyncService = {
 
   async loadFromAivenDB() {
     try {
-      // Skip pull if local edit happened within last 4 seconds or a push is in-flight
-      if (this.isPushing || (this.lastLocalEditTime && (Date.now() - this.lastLocalEditTime < 4000))) {
+      // Skip pull if local edit happened within last 30 seconds or a push is in-flight
+      if (this.isPushing || (this.lastLocalEditTime && (Date.now() - this.lastLocalEditTime < 30000))) {
         return;
       }
 

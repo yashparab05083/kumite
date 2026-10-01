@@ -211,6 +211,9 @@ const BoutEditor = {
           <button class="btn btn-danger btn-sm fw-bold" onclick="BoutEditor.downloadBoutPDF('${boutId}')">📄 Download PDF (1 Page)</button>
           <button class="btn btn-warning text-dark btn-sm fw-bold" onclick="BoutEditor.downloadAllBoutsPDF()">📥 Download All Bout Sheets PDF</button>
           <button class="btn btn-secondary btn-sm fw-bold" onclick="BoutEditor.printBoutSheet()">🖨️ Print Sheet</button>
+          ${bracket.eventType === 'Kata' ? `
+            <button id="finishKataBtn_${boutId}" class="btn btn-primary btn-sm fw-bold px-3 shadow-sm" onclick="BoutEditor.finishKataRound('${boutId}')">🏁 Calculate & Finish Round 1</button>
+          ` : ''}
           <button id="submitBtn_${boutId}" class="btn btn-success btn-sm fw-bold px-3 shadow-sm" onclick="BoutEditor.submitAndFinishBout('${boutId}')">💾 Submit / Finish Bout</button>
         </div>
         ${isOrganizer ? `
@@ -249,9 +252,81 @@ const BoutEditor = {
     }
   },
 
+  finishKataRound(boutId) {
+    const bracket = SyncService.state.brackets[boutId];
+    if (!bracket || bracket.eventType !== 'Kata') return;
+
+    // 1. Read all Main Kata Table inputs from DOM
+    if (Array.isArray(bracket.competitors)) {
+      bracket.competitors.forEach(comp => {
+        if (!Array.isArray(comp.scores) || comp.scores.length !== 5) {
+          comp.scores = [5.0, 5.0, 5.0, 5.0, 5.0];
+        }
+        if (!Array.isArray(comp.refereeTouched) || comp.refereeTouched.length !== 5) {
+          comp.refereeTouched = [false, false, false, false, false];
+        }
+
+        [0, 1, 2, 3, 4].forEach(refIdx => {
+          const inputEl = document.getElementById(`kataInput_${boutId}_${comp.id}_${refIdx}`);
+          if (inputEl) {
+            const val = inputEl.value;
+            if (val !== '' || inputEl.dataset.touched === 'true') {
+              const num = parseFloat(val);
+              comp.scores[refIdx] = isNaN(num) ? 5.0 : num;
+              comp.refereeTouched[refIdx] = true;
+            }
+          }
+        });
+        comp.hasScored = comp.refereeTouched.some(t => t);
+      });
+    }
+
+    // 2. Read all 3+ Way Re-score Round table inputs from DOM if active
+    if (bracket.tieBreaker && bracket.tieBreaker.rescoreRound && Array.isArray(bracket.tieBreaker.rescoreRound.competitors)) {
+      bracket.tieBreaker.rescoreRound.competitors.forEach(rc => {
+        if (!Array.isArray(rc.scores) || rc.scores.length !== 5) {
+          rc.scores = [5.0, 5.0, 5.0, 5.0, 5.0];
+        }
+        if (!Array.isArray(rc.refereeTouched) || rc.refereeTouched.length !== 5) {
+          rc.refereeTouched = [false, false, false, false, false];
+        }
+
+        [0, 1, 2, 3, 4].forEach(refIdx => {
+          const inputEl = document.getElementById(`kataRescoreInput_${boutId}_${rc.id}_${refIdx}`);
+          if (inputEl) {
+            const val = inputEl.value;
+            if (val !== '' || inputEl.dataset.touched === 'true') {
+              const num = parseFloat(val);
+              rc.scores[refIdx] = isNaN(num) ? 5.0 : num;
+              rc.refereeTouched[refIdx] = true;
+            }
+          }
+        });
+        rc.hasScored = rc.refereeTouched.some(t => t);
+      });
+    }
+
+    // 3. Recalculate ranks, check completion, and save/broadcast
+    SyncService.lastLocalEditTime = Date.now();
+    BracketEngine.recalculateKataRanks(bracket);
+    SyncService.checkBoutCompletion(boutId);
+    SyncService.saveToLocal();
+
+    // 4. Re-render bout sheet
+    this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
+    const ringContainer = document.getElementById('ringBoutContainer');
+    if (ringContainer) {
+      this.renderBoutSheet(boutId, 'ringBoutContainer');
+    }
+  },
+
   async submitAndFinishBout(boutId) {
     const bracket = SyncService.state.brackets[boutId];
     if (!bracket) return alert('Bout sheet not found!');
+
+    if (bracket.eventType === 'Kata') {
+      this.finishKataRound(boutId);
+    }
 
     const btn = document.getElementById(`submitBtn_${boutId}`);
     if (btn) {
@@ -814,6 +889,7 @@ const BoutEditor = {
   },
 
   onKataScoreFocus(boutId, compId, refIndex) {
+    SyncService.lastLocalEditTime = Date.now();
     const bracket = SyncService.state.brackets[boutId];
     if (!bracket || bracket.eventType !== 'Kata') return;
 
@@ -838,6 +914,7 @@ const BoutEditor = {
   },
 
   updateKataScore(boutId, compId, refIndex, val) {
+    SyncService.lastLocalEditTime = Date.now();
     const bracket = SyncService.state.brackets[boutId];
     if (!bracket || bracket.eventType !== 'Kata') return;
 
@@ -952,6 +1029,7 @@ const BoutEditor = {
   },
 
   onKataRescoreFocus(boutId, compId, refIndex) {
+    SyncService.lastLocalEditTime = Date.now();
     const bracket = SyncService.state.brackets[boutId];
     if (!bracket || bracket.eventType !== 'Kata' || !bracket.tieBreaker || !bracket.tieBreaker.rescoreRound) return;
 
@@ -976,6 +1054,7 @@ const BoutEditor = {
   },
 
   updateKataRescore(boutId, compId, refIndex, val) {
+    SyncService.lastLocalEditTime = Date.now();
     const bracket = SyncService.state.brackets[boutId];
     if (!bracket || bracket.eventType !== 'Kata' || !bracket.tieBreaker || !bracket.tieBreaker.rescoreRound) return;
 
