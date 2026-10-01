@@ -41,7 +41,7 @@ async function startServer() {
 
     setTimeout(() => {
       resolve(); // Fallback if output was buffered
-    }, 2000);
+    }, 7000);
   });
 }
 

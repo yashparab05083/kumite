@@ -243,9 +243,20 @@ const ExcelImporter = {
     return '18 Years & Above';
   },
 
-  // Auto-generate Bout Groups from Participant List (Kata Bouts First -> Kumite Bouts Second -> Min 4 per Bout, Min 3 if no option)
+  // Auto-generate Bout Groups from Participant List
   generateBoutGroups(participants, eventMode = 'both') {
-    // Step 1: Group by Age Category & Gender
+    // Helper for generating bout letter codes: 0 -> 'a', 1 -> 'b', ..., 25 -> 'z', 26 -> 'aa', 27 -> 'ab'...
+    const getBoutLetter = (index) => {
+      let letter = '';
+      let i = index;
+      while (i >= 0) {
+        letter = String.fromCharCode(97 + (i % 26)) + letter;
+        i = Math.floor(i / 26) - 1;
+      }
+      return letter;
+    };
+
+    // Step 1: Group by Age Category & Gender (Strict requirement: Same age and gender mandatory)
     const ageGenderBins = {};
 
     participants.forEach(p => {
@@ -264,212 +275,188 @@ const ExcelImporter = {
 
     const bouts = [];
 
+    // Process each Age & Gender bin independently
     Object.keys(ageGenderBins).forEach(agKey => {
       const agBin = ageGenderBins[agKey];
       const pList = agBin.participants;
       if (!pList || pList.length === 0) return;
 
-      // Group by Belt Tier (Beginner, Intermediate, Advanced, Black Belt)
-      const tierOrder = ['Beginner', 'Intermediate', 'Advanced', 'Black Belt'];
-      const tierBins = {
-        'Beginner': [],
-        'Intermediate': [],
-        'Advanced': [],
-        'Black Belt': []
-      };
-
+      // Step 2: Group by Belt Code with 1-Belt Difference Adjustment Rule
+      // Sort exact belts in descending order (White Kyu 9, Orange 8, Yellow 7, Green 6, Blue 5, Purple 4, Brown 3, 2, 1, Black -1..-9)
+      const exactBeltMap = {};
       pList.forEach(p => {
-        const tier = p.beltTier || 'Beginner';
-        if (!tierBins[tier]) tierBins[tier] = [];
-        tierBins[tier].push(p);
+        const bCode = p.belt !== undefined ? p.belt : 9;
+        if (!exactBeltMap[bCode]) exactBeltMap[bCode] = [];
+        exactBeltMap[bCode].push(p);
       });
 
-      // Build initial raw group list per tier
-      let rawTierGroups = [];
+      const sortedBeltCodes = Object.keys(exactBeltMap).map(Number).sort((a, b) => b - a);
 
-      tierOrder.forEach(tierName => {
-        const tierList = tierBins[tierName];
-        if (!tierList || tierList.length === 0) return;
+      // Build initial belt groups
+      let beltGroups = sortedBeltCodes.map(bCode => ({
+        beltCodes: [bCode],
+        beltLabel: this.getBeltLabel(bCode),
+        tierName: this.getBeltTier(bCode),
+        participants: exactBeltMap[bCode]
+      }));
 
-        // Group by Exact Belt within Tier
-        const exactBeltMap = {};
-        tierList.forEach(p => {
-          const bCode = p.belt !== undefined ? p.belt : 9;
-          if (!exactBeltMap[bCode]) exactBeltMap[bCode] = [];
-          exactBeltMap[bCode].push(p);
-        });
+      // Merge small groups (< 3 participants) with ADJACENT belt ranks ONLY (|b1 - b2| <= 1)
+      let mergedBeltGroups = [];
+      let i = 0;
+      while (i < beltGroups.length) {
+        let current = beltGroups[i];
 
-        const sortedBeltCodes = Object.keys(exactBeltMap).map(Number).sort((a, b) => b - a);
+        // If current group has < 3 participants, attempt to merge with adjacent belt rank in the list
+        if (current.participants.length < 3 && i + 1 < beltGroups.length) {
+          const next = beltGroups[i + 1];
+          const bCurrentLast = current.beltCodes[current.beltCodes.length - 1];
+          const bNextFirst = next.beltCodes[0];
 
-        sortedBeltCodes.forEach(bCode => {
-          const bList = exactBeltMap[bCode];
-          const schoolKids = bList.filter(p => p.schoolHours);
-          const regularKids = bList.filter(p => !p.schoolHours);
-          const orderedBeltList = [...schoolKids, ...regularKids];
-
-          if (orderedBeltList.length >= 8) {
-            const numDedicated = Math.ceil(orderedBeltList.length / 8);
-            const distributedLists = this.distributeParticipantsWithBranchSeparation(orderedBeltList, numDedicated);
-
-            distributedLists.forEach(subList => {
-              if (subList && subList.length > 0) {
-                rawTierGroups.push({
-                  tierName,
-                  beltLabel: this.getBeltLabel(bCode),
-                  beltLabelsSet: new Set([this.getBeltLabel(bCode)]),
-                  list: subList
-                });
-              }
-            });
-          } else {
-            rawTierGroups.push({
-              tierName,
-              beltLabel: this.getBeltLabel(bCode),
-              beltLabelsSet: new Set([this.getBeltLabel(bCode)]),
-              list: orderedBeltList
-            });
+          // Check if adjacent (1 belt up or 1 belt down: |bCurrent - bNext| <= 1)
+          if (Math.abs(bCurrentLast - bNextFirst) <= 1) {
+            current = {
+              beltCodes: [...current.beltCodes, ...next.beltCodes],
+              beltLabel: `${current.beltLabel} & ${next.beltLabel}`,
+              tierName: current.tierName === next.tierName ? current.tierName : `${current.tierName}/${next.tierName}`,
+              participants: [...current.participants, ...next.participants]
+            };
+            i++; // skip next since it's merged
           }
-        });
-      });
+        } else if (current.participants.length < 3 && mergedBeltGroups.length > 0) {
+          // If still < 3 and at end, check if can merge backward into previous group if adjacent
+          const prev = mergedBeltGroups[mergedBeltGroups.length - 1];
+          const bPrevLast = prev.beltCodes[prev.beltCodes.length - 1];
+          const bCurrentFirst = current.beltCodes[0];
 
-      // Merge small groups so NO group has 1 or 2 participants (Target min 4 per bout, min 3 if no option)
-      const mergedKumiteGroups = [];
-      let accumulator = [];
-      let accumTierName = '';
-      let accumBeltLabels = new Set();
-
-      rawTierGroups.forEach(rg => {
-        if (rg.list.length >= 8 && accumulator.length === 0) {
-          mergedKumiteGroups.push({
-            tierName: rg.tierName,
-            label: rg.beltLabel,
-            list: rg.list
-          });
-        } else {
-          if (accumulator.length + rg.list.length <= 9) {
-            accumulator.push(...rg.list);
-            rg.beltLabelsSet.forEach(l => accumBeltLabels.add(l));
-            if (!accumTierName) accumTierName = rg.tierName;
-            else if (accumTierName.indexOf(rg.tierName) === -1) {
-              accumTierName += ` & ${rg.tierName}`;
-            }
-          } else {
-            if (accumulator.length > 0) {
-              const labelsArr = Array.from(accumBeltLabels);
-              const displayLabel = labelsArr.length === 1 ? labelsArr[0] : `${accumTierName} (${labelsArr.join(', ')})`;
-              mergedKumiteGroups.push({
-                tierName: accumTierName,
-                label: displayLabel,
-                list: accumulator
-              });
-            }
-            accumulator = [...rg.list];
-            accumTierName = rg.tierName;
-            accumBeltLabels = new Set(rg.beltLabelsSet);
+          if (Math.abs(bPrevLast - bCurrentFirst) <= 1) {
+            prev.beltCodes.push(...current.beltCodes);
+            prev.beltLabel += ` & ${current.beltLabel}`;
+            prev.participants.push(...current.participants);
+            i++;
+            continue;
           }
         }
-      });
 
-      if (accumulator.length > 0) {
-        // If leftover accumulator has < 3 participants and we already have a merged group, merge with last group if size <= 9
-        if (accumulator.length < 3 && mergedKumiteGroups.length > 0) {
-          const lastGroup = mergedKumiteGroups[mergedKumiteGroups.length - 1];
-          if (lastGroup.list.length + accumulator.length <= 9) {
-            lastGroup.list.push(...accumulator);
-            accumBeltLabels.forEach(l => {
-              if (lastGroup.label.indexOf(l) === -1) {
-                lastGroup.label += `, ${l}`;
-              }
-            });
-          } else {
-            const labelsArr = Array.from(accumBeltLabels);
-            const displayLabel = labelsArr.length === 1 ? labelsArr[0] : `${accumTierName} (${labelsArr.join(', ')})`;
-            mergedKumiteGroups.push({
-              tierName: accumTierName,
-              label: displayLabel,
-              list: accumulator
-            });
-          }
-        } else {
-          const labelsArr = Array.from(accumBeltLabels);
-          const displayLabel = labelsArr.length === 1 ? labelsArr[0] : `${accumTierName} (${labelsArr.join(', ')})`;
-          mergedKumiteGroups.push({
-            tierName: accumTierName,
-            label: displayLabel,
-            list: accumulator
-          });
-        }
+        mergedBeltGroups.push(current);
+        i++;
       }
 
-      // Generate Kumite & Kata bout objects from mergedKumiteGroups
-      mergedKumiteGroups.forEach((mGroup, gIdx) => {
-        const letter = String.fromCharCode(97 + gIdx); // 'a', 'b', 'c'...
-        const cleanAgeCatCode = agBin.ageCat.toLowerCase().replace(/[^a-z0-9]/g, '');
+      // Track Kumite bout letter index per Age & Gender bin
+      let kumiteBoutIndex = 0;
 
-        // 1. KUMITE BOUT
-        if (eventMode === 'kumite' || eventMode === 'both') {
-          const boutCode = `${cleanAgeCatCode}_kumite_${letter}`;
-          const boutName = `${agBin.ageCat} - ${agBin.gender} - ${mGroup.label} - KUMITE (Group ${letter.toUpperCase()})`;
+      // Step 3: For each merged belt group, generate Kumite & Kata bouts
+      mergedBeltGroups.forEach(bGroup => {
+        const pool = bGroup.participants;
+        if (!pool || pool.length === 0) return;
 
-          bouts.push({
-            id: 'bout_kumite_' + Math.random().toString(36).substr(2, 9),
-            boutCode,
-            boutName,
-            eventType: 'Kumite',
-            ageCategory: agBin.ageCat,
-            gender: agBin.gender,
-            beltTier: mGroup.tierName,
-            participants: mGroup.list,
-            status: 'Pending',
-            tatamiId: null
-          });
+        // Sort participants by schoolHours so school kids are prioritized if needed
+        const schoolKids = pool.filter(p => p.schoolHours);
+        const regularKids = pool.filter(p => !p.schoolHours);
+        const orderedPool = [...schoolKids, ...regularKids];
+
+        // Partition pool into Kumite bouts of size 4 to 8 participants (target max 8)
+        const totalP = orderedPool.length;
+        let numKumiteChunks = Math.ceil(totalP / 8);
+        if (numKumiteChunks === 0) numKumiteChunks = 1;
+        
+        // Distribute participants into Kumite chunks as evenly as possible
+        const kumiteChunks = [];
+        const baseSize = Math.floor(totalP / numKumiteChunks);
+        let remainder = totalP % numKumiteChunks;
+        
+        let pOffset = 0;
+        for (let k = 0; k < numKumiteChunks; k++) {
+          const chunkLen = baseSize + (remainder > 0 ? 1 : 0);
+          if (remainder > 0) remainder--;
+          
+          const chunkParticipants = orderedPool.slice(pOffset, pOffset + chunkLen);
+          pOffset += chunkLen;
+          if (chunkParticipants.length > 0) {
+            kumiteChunks.push(chunkParticipants);
+          }
         }
 
-        // 2. KATA BOUT
-        if (eventMode === 'kata' || eventMode === 'both') {
-          // If group size < 6 (e.g. 3, 4, 5 participants), keep as 1 SINGLE Kata Bout!
-          // Only split into Sub-group 1 & 2 if group size >= 6 so each Kata bout has min 3-4 participants!
-          let kataSubs = [];
-          if (mGroup.list.length < 6) {
-            kataSubs = [{ label: letter.toUpperCase(), list: mGroup.list }];
-          } else {
-            const [kataSub1, kataSub2] = this.splitKataSubgroupsWithBranchSeparation(mGroup.list);
-            kataSubs = [
-              { label: `${letter.toUpperCase()}1`, list: kataSub1 },
-              { label: `${letter.toUpperCase()}2`, list: kataSub2 }
-            ].filter(sub => sub.list.length > 0);
+        // Process each Kumite chunk
+        kumiteChunks.forEach(chunkParticipants => {
+          const letter = getBoutLetter(kumiteBoutIndex);
+          kumiteBoutIndex++;
+
+          // Subdivide chunkParticipants into 2 or 3 Kata bouts of sizes 3..5 (max 5, min 3)
+          const chunkSize = chunkParticipants.length;
+          let numKataSubs = 1;
+          if (chunkSize >= 6) {
+            numKataSubs = 2; // e.g. 6->(3,3), 7->(4,3), 8->(4,4)
+          } else if (chunkSize > 5) {
+            numKataSubs = Math.ceil(chunkSize / 5);
           }
 
-          kataSubs.forEach((sub, subIdx) => {
-            const subLabelStr = kataSubs.length === 1 ? letter.toUpperCase() : `${letter.toUpperCase()}${subIdx + 1}`;
-            const boutCode = `${cleanAgeCatCode}_kata_${subLabelStr.toLowerCase()}`;
-            const boutName = `${agBin.ageCat} - ${agBin.gender} - ${mGroup.label} - KATA (Group ${subLabelStr})`;
+          // Distribute chunk participants across Kata sub-bouts with branch separation
+          const kataSubLists = this.distributeParticipantsWithBranchSeparation(chunkParticipants, numKataSubs);
+
+          const createdKataBouts = [];
+
+          // 1. Create KATA bouts first
+          if (eventMode === 'kata' || eventMode === 'both') {
+            kataSubLists.forEach((subList, subIdx) => {
+              if (!subList || subList.length === 0) return;
+              const subNum = subIdx + 1;
+              const boutCode = `${agBin.ageCat.toLowerCase().replace(/[^a-z0-9]/g, '')}_kata_${letter}${subNum}`;
+              const boutName = `${agBin.ageCat} ${agBin.gender} Kata Bout ${letter}${subNum}`;
+
+              const kataBout = {
+                id: 'bout_kata_' + Math.random().toString(36).substr(2, 9),
+                boutCode,
+                boutName,
+                eventType: 'Kata',
+                ageCategory: agBin.ageCat,
+                gender: agBin.gender,
+                beltTier: bGroup.tierName,
+                beltLabel: bGroup.beltLabel,
+                participants: subList,
+                status: 'Pending',
+                tatamiId: null
+              };
+              bouts.push(kataBout);
+              createdKataBouts.push(kataBout);
+            });
+          }
+
+          // 2. Create KUMITE bout (merging participants from the corresponding Kata bouts)
+          if (eventMode === 'kumite' || eventMode === 'both') {
+            const boutCode = `${agBin.ageCat.toLowerCase().replace(/[^a-z0-9]/g, '')}_kumite_${letter}`;
+            const boutName = `${agBin.ageCat} ${agBin.gender} Kumite Bout ${letter}`;
+
+            // Combine all participants from the Kata sub-bouts for this letter
+            const kumiteParticipants = createdKataBouts.length > 0
+              ? createdKataBouts.flatMap(kb => kb.participants)
+              : chunkParticipants;
 
             bouts.push({
-              id: 'bout_kata_' + Math.random().toString(36).substr(2, 9),
+              id: 'bout_kumite_' + Math.random().toString(36).substr(2, 9),
               boutCode,
               boutName,
-              eventType: 'Kata',
+              eventType: 'Kumite',
               ageCategory: agBin.ageCat,
               gender: agBin.gender,
-              beltTier: mGroup.tierName,
-              participants: sub.list,
+              beltTier: bGroup.tierName,
+              beltLabel: bGroup.beltLabel,
+              participants: kumiteParticipants,
               status: 'Pending',
               tatamiId: null
             });
-          });
-        }
+          }
+        });
       });
     });
 
-    // Final Sort: All KATA bouts first, followed by all KUMITE bouts
+    // Final Sort: All KATA bouts first (sorted by age, gender, bout name), followed by all KUMITE bouts
     bouts.sort((a, b) => {
       if (a.eventType !== b.eventType) {
         return a.eventType === 'Kata' ? -1 : 1;
       }
       if (a.ageCategory !== b.ageCategory) return a.ageCategory.localeCompare(b.ageCategory);
       if (a.gender !== b.gender) return a.gender.localeCompare(b.gender);
-      return (a.boutCode || '').localeCompare(b.boutCode || '');
+      return (a.boutName || '').localeCompare(b.boutName || '');
     });
 
     return bouts;

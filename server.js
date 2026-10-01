@@ -113,7 +113,7 @@ async function initStorage() {
       const res = await dbQuery('SELECT state_data FROM tournament_state WHERE id = $1', ['main']);
       if (res && res.rows && res.rows.length > 0 && res.rows[0].state_data) {
         const dbData = res.rows[0].state_data;
-        if (dbData && dbData.bouts && dbData.bouts.length > 0) {
+        if (dbData && typeof dbData === 'object' && dbData.bouts) {
           ramCache = dbData;
           updateEtag();
           try { fs.writeFileSync(DATA_FILE, JSON.stringify(ramCache, null, 2), 'utf8'); } catch (e) {}
@@ -132,7 +132,7 @@ async function initStorage() {
       const raw = fs.readFileSync(DATA_FILE, 'utf8');
       if (raw && raw.trim().length > 0) {
         const parsed = JSON.parse(raw);
-        if (parsed && parsed.bouts && parsed.bouts.length > 0) {
+        if (parsed && typeof parsed === 'object' && parsed.bouts) {
           ramCache = parsed;
           updateEtag();
           console.log('⚡ Loaded tournament state from local file: tournament_data.json');
