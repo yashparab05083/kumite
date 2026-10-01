@@ -94,37 +94,62 @@
       z-index: 2;
     }
 
-    .header-container {
+    .exit-match-btn {
       position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      text-align: center;
-      padding: 10px;
-      z-index: 100;
-      background: rgba(0, 0, 0, 0.4);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+      top: 15px;
+      right: 20px;
+      z-index: 500;
+      background: rgba(0, 0, 0, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      color: white;
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1.2rem;
+      letter-spacing: 1px;
+      padding: 6px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s ease-in-out;
+    }
+
+    .exit-match-btn:hover {
+      background: rgba(220, 53, 69, 0.85);
+      border-color: #dc3545;
       color: white;
     }
 
-    .header-container img {
+    .center-control-column {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      z-index: 200;
+    }
+
+    .scoreboard-header-logo {
       max-height: 80px;
+      max-width: 360px;
       object-fit: contain;
+      filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.7));
+    }
+
+    .scoreboard-zenkaido-logo {
+      max-height: 75px;
+      max-width: 220px;
+      object-fit: contain;
+      filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.7));
     }
 
     .timer-card {
-      position: absolute;
-      top: 52%;
-      left: 50%;
-      transform: translate(-50%, -50%);
       text-align: center;
       background: var(--light-dark);
       padding: 0.5rem 3rem;
       border-radius: 20px;
       box-shadow: 0 0 40px rgba(255, 255, 255, 0.1);
-      z-index: 200;
       border: 2px solid var(--yellow);
       display: flex;
       flex-direction: column;
@@ -360,13 +385,9 @@
 
   <!-- 4. LIVE MATCH SCOREBOARD OVERLAY (FullScreen) -->
   <div id="scoreboardSection" class="scoreboard-overlay-container" style="display: none;">
-    <div class="header-container">
-      <div>
-        <h3 id="matchCategoryTitle" class="m-0 text-warning fw-bold">Category Title</h3>
-      </div>
-      <img src="header1.png" alt="Shotokan Championship Logo">
-      <button class="btn btn-outline-light btn-sm" onclick="ScoreboardController.closeScoreboard()">✖ Exit Match</button>
-    </div>
+    <!-- Exit Match floating button (top right) -->
+    <button class="exit-match-btn" onclick="ScoreboardController.closeScoreboard()">✖ EXIT MATCH</button>
+    <span id="matchCategoryTitle" style="display: none;"></span>
 
     <div class="d-flex flex-grow-1">
       <!-- AKA SIDE (RED) -->
@@ -432,37 +453,43 @@
       </div>
     </div>
 
-    <!-- Floating Timer Card -->
-    <div class="timer-card">
-      <div class="display-time" id="time">03:00</div>
-      <div class="mt-2">
-        <button onclick="startTimer()" class="btn btn-success btn-lg">Start</button>
-        <button onclick="stopTimer()" class="btn btn-danger btn-lg">Stop</button>
-        <button onclick="resetTimer()" class="btn btn-secondary btn-lg">Reset</button>
-      </div>
+    <!-- Center Control Column (Header Logo + Timer Card + Zenkaido Logo) -->
+    <div class="center-control-column">
+      <img src="header1.png" alt="Shotokan Championship Logo" class="scoreboard-header-logo">
 
-      <!-- Lead Victory Warning Banner (with 10s Grace Period) -->
-      <div id="leadNoticeBanner" class="lead-banner" style="display: none;">
-        <span id="leadNoticeText">⚠️ AKA 8-Point Lead! Ending in 10s...</span>
-        <div class="d-flex justify-content-center gap-2 mt-1">
-          <button onclick="confirmLeadVictoryNow()" class="btn btn-dark btn-sm fw-bold">Confirm Win Now</button>
-          <button onclick="cancelLeadVictoryAndUndo()" class="btn btn-danger btn-sm fw-bold">Undo Error</button>
+      <div class="timer-card">
+        <div class="display-time" id="time">03:00</div>
+        <div class="mt-2">
+          <button onclick="startTimer()" class="btn btn-success btn-lg">Start</button>
+          <button onclick="stopTimer()" class="btn btn-danger btn-lg">Stop</button>
+          <button onclick="resetTimer()" class="btn btn-secondary btn-lg">Reset</button>
+        </div>
+
+        <!-- Lead Victory Warning Banner (with 10s Grace Period) -->
+        <div id="leadNoticeBanner" class="lead-banner" style="display: none;">
+          <span id="leadNoticeText">⚠️ AKA 8-Point Lead! Ending in 10s...</span>
+          <div class="d-flex justify-content-center gap-2 mt-1">
+            <button onclick="confirmLeadVictoryNow()" class="btn btn-dark btn-sm fw-bold">Confirm Win Now</button>
+            <button onclick="cancelLeadVictoryAndUndo()" class="btn btn-danger btn-sm fw-bold">Undo Error</button>
+          </div>
+        </div>
+
+        <div class="d-flex gap-2 mt-2">
+          <input type="number" id="minuteInput" class="form-control text-center bg-dark text-white border-warning" style="width: 70px;" min="0" value="3">
+          <input type="number" id="secondInput" class="form-control text-center bg-dark text-white border-warning" style="width: 70px;" min="0" max="59" value="0">
+        </div>
+        <div class="mt-2 text-warning">
+          <span>Lead Victory Margin: </span>
+          <select id="leadSelect" class="form-select form-select-sm d-inline-block w-auto" onchange="checkVictoryMargin()">
+            <option value="0">None</option>
+            <option value="4">4 points</option>
+            <option value="6">6 points</option>
+            <option value="8" selected>8 points</option>
+          </select>
         </div>
       </div>
 
-      <div class="d-flex gap-2 mt-2">
-        <input type="number" id="minuteInput" class="form-control text-center bg-dark text-white border-warning" style="width: 70px;" min="0" value="3">
-        <input type="number" id="secondInput" class="form-control text-center bg-dark text-white border-warning" style="width: 70px;" min="0" max="59" value="0">
-      </div>
-      <div class="mt-2 text-warning">
-        <span>Lead Victory Margin: </span>
-        <select id="leadSelect" class="form-select form-select-sm d-inline-block w-auto" onchange="checkVictoryMargin()">
-          <option value="0">None</option>
-          <option value="4">4 points</option>
-          <option value="6">6 points</option>
-          <option value="8" selected>8 points</option>
-        </select>
-      </div>
+      <img src="zenkaido-logo.png" alt="Zenkaido Logo" class="scoreboard-zenkaido-logo">
     </div>
   </div>
 

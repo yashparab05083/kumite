@@ -32,7 +32,10 @@ const ScoreboardController = {
 
     document.getElementById('akaFighterName').innerText = `${redName} (${redDojo})`;
     document.getElementById('aaoFighterName').innerText = `${blueName} (${blueDojo})`;
-    document.getElementById('matchCategoryTitle').innerText = `${bracket.boutName} - Match #${matchNumber} (${match.roundName})`;
+    const categoryTitleElem = document.getElementById('matchCategoryTitle');
+    if (categoryTitleElem) {
+      categoryTitleElem.innerText = `${bracket.boutName} - Match #${matchNumber} (${match.roundName})`;
+    }
 
     // Reset scores & stats
     resetTimer();
