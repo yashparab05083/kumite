@@ -81,6 +81,9 @@ const SyncService = {
 
   initWebSocketSync() {
     try {
+      if (typeof window === 'undefined' || window.location.protocol === 'file:' || !window.location.host) {
+        return;
+      }
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${window.location.host}/ws`;
       const ws = new WebSocket(wsUrl);
@@ -88,7 +91,29 @@ const SyncService = {
       ws.onmessage = (event) => {
         if (!event.data) return;
         if (event.data === 'RESET') {
-          this.loadFromLocal();
+          localStorage.removeItem(this.STORAGE_KEY);
+          localStorage.removeItem('kumite_backup_snapshot');
+          this.state = {
+            tournamentInfo: {
+              title: 'SHOTOKAN KARATE CHAMPIONSHIP',
+              date: new Date().toISOString().split('T')[0],
+              referees: ['Ref 1', 'Ref 2', 'Ref 3', 'Ref 4', 'Ref 5']
+            },
+            participants: [],
+            bouts: [],
+            brackets: {},
+            tatamis: Array.from({ length: 8 }, (_, i) => ({
+              id: i + 1,
+              name: `Tatami ${i + 1}`,
+              activeBoutId: null,
+              activeMatchNumber: null,
+              assignedBoutIds: [],
+              status: 'Empty',
+              lastUpdated: 0
+            })),
+            currentUser: this.state ? this.state.currentUser : null,
+            lastUpdated: 0
+          };
           this.notifyListeners();
           return;
         }
@@ -303,14 +328,19 @@ const SyncService = {
   },
 
   setBoutsAndBrackets(bouts, brackets) {
-    this.state.bouts = bouts;
-    this.state.brackets = brackets;
+    const now = Date.now();
+    this.state.bouts = bouts.map(b => ({ ...b, lastUpdated: now }));
+    this.state.brackets = {};
+    for (const [k, v] of Object.entries(brackets)) {
+      this.state.brackets[k] = { ...v, lastUpdated: now };
+    }
     if (this.state.tatamis && Array.isArray(this.state.tatamis)) {
       this.state.tatamis.forEach(t => {
         t.activeBoutId = null;
         t.activeMatchNumber = null;
         t.assignedBoutIds = [];
         t.status = 'Empty';
+        t.lastUpdated = now;
       });
     }
     this.saveToLocal();
@@ -319,6 +349,7 @@ const SyncService = {
   assignBoutToTatami(tatamiId, boutId) {
     if (!tatamiId || !boutId) return;
     const numericTatamiId = parseInt(tatamiId, 10);
+    const now = Date.now();
 
     const tatami = this.state.tatamis.find(t => t.id === numericTatamiId);
     if (!tatami) return;
@@ -329,7 +360,14 @@ const SyncService = {
         const idx = t.assignedBoutIds.indexOf(boutId);
         if (idx !== -1 && t.id !== numericTatamiId) {
           t.assignedBoutIds.splice(idx, 1);
+          t.lastUpdated = now;
         }
+      }
+      if (t.id !== numericTatamiId && t.activeBoutId === boutId) {
+        t.activeBoutId = null;
+        t.activeMatchNumber = null;
+        t.status = 'Empty';
+        t.lastUpdated = now;
       }
     });
 
@@ -340,6 +378,7 @@ const SyncService = {
     if (tatami.assignedBoutIds.indexOf(boutId) === -1) {
       tatami.assignedBoutIds.push(boutId);
     }
+    tatami.lastUpdated = now;
 
     const bout = this.state.bouts.find(b => b.id === boutId);
     if (bout) {
@@ -347,17 +386,20 @@ const SyncService = {
       if (bout.status !== 'Completed') {
         bout.status = 'Assigned';
       }
+      bout.lastUpdated = now;
     }
 
     const bracket = this.state.brackets[boutId];
     if (bracket) {
       bracket.tatamiId = numericTatamiId;
+      bracket.lastUpdated = now;
     }
 
     this.saveToLocal();
   },
 
   unassignBoutFromTatami(boutId) {
+    const now = Date.now();
     const bout = this.state.bouts.find(b => b.id === boutId);
     if (bout) {
       const oldTatamiId = bout.tatamiId;
@@ -365,32 +407,51 @@ const SyncService = {
       if (bout.status === 'Assigned') {
         bout.status = 'Pending';
       }
+      bout.lastUpdated = now;
       if (oldTatamiId) {
         const tatami = this.state.tatamis.find(t => t.id === oldTatamiId);
-        if (tatami && tatami.assignedBoutIds) {
-          const idx = tatami.assignedBoutIds.indexOf(boutId);
-          if (idx !== -1) tatami.assignedBoutIds.splice(idx, 1);
+        if (tatami) {
+          tatami.lastUpdated = now;
+          if (tatami.assignedBoutIds) {
+            const idx = tatami.assignedBoutIds.indexOf(boutId);
+            if (idx !== -1) tatami.assignedBoutIds.splice(idx, 1);
+          }
+          if (tatami.activeBoutId === boutId) {
+            tatami.activeBoutId = null;
+            tatami.activeMatchNumber = null;
+            tatami.status = 'Empty';
+          }
         }
       }
     }
     const bracket = this.state.brackets[boutId];
     if (bracket) {
       bracket.tatamiId = null;
+      bracket.lastUpdated = now;
     }
     this.saveToLocal();
   },
 
   setActiveTatamiMatch(tatamiId, boutId, matchNumber) {
-    const tatami = this.state.tatamis.find(t => t.id === tatamiId);
+    const numericTatamiId = parseInt(tatamiId, 10);
+    const tatami = this.state.tatamis.find(t => t.id === numericTatamiId);
     if (!tatami) return;
 
+    const now = Date.now();
     tatami.activeBoutId = boutId;
     tatami.activeMatchNumber = matchNumber;
     tatami.status = boutId ? 'Active' : 'Empty';
+    tatami.lastUpdated = now;
 
     const bout = this.state.bouts.find(b => b.id === boutId);
     if (bout && bout.status !== 'Completed') {
       bout.status = 'In Progress';
+      bout.lastUpdated = now;
+    }
+
+    const bracket = this.state.brackets[boutId];
+    if (bracket) {
+      bracket.lastUpdated = now;
     }
 
     this.saveToLocal();
@@ -401,6 +462,8 @@ const SyncService = {
     const bout = this.state.bouts.find(b => b.id === boutId);
     const bracket = this.state.brackets[boutId];
     if (!bout || !bracket) return;
+
+    const prevStatus = bout.status;
 
     if (bracket.eventType === 'Kata') {
       const activeScored = bracket.competitors.filter(c => c.totalScore > 0);
@@ -413,6 +476,7 @@ const SyncService = {
       } else {
         bout.status = activeScored.length > 0 ? 'In Progress' : (bout.tatamiId ? 'Assigned' : 'Pending');
       }
+      if (prevStatus !== bout.status) bout.lastUpdated = Date.now();
       return;
     }
 
@@ -425,16 +489,22 @@ const SyncService = {
       const anyStarted = bracket.matches && bracket.matches.some(m => m.status === 'Completed');
       bout.status = anyStarted ? 'In Progress' : (bout.tatamiId ? 'Assigned' : 'Pending');
     }
+
+    if (prevStatus !== bout.status) bout.lastUpdated = Date.now();
   },
 
   commitMatchResult(boutId, matchNumber, winnerSide, matchScore) {
     const bracket = this.state.brackets[boutId];
     if (!bracket) return;
 
+    const now = Date.now();
     BracketEngine.updateMatchResult(bracket, matchNumber, winnerSide, matchScore);
+    bracket.lastUpdated = now;
+
     this.checkBoutCompletion(boutId);
 
     const bout = this.state.bouts.find(b => b.id === boutId);
+    if (bout) bout.lastUpdated = now;
     const isBoutDone = bout && bout.status === 'Completed';
 
     this.state.tatamis.forEach(tatami => {
@@ -447,6 +517,7 @@ const SyncService = {
           if (isBoutDone) tatami.activeBoutId = null;
         }
         tatami.status = tatami.activeBoutId ? 'Active' : 'Empty';
+        tatami.lastUpdated = now;
       }
     });
 

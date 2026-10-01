@@ -529,6 +529,10 @@ const BoutEditor = {
     const medals = bracket.medals || {};
     const tieBreaker = bracket.tieBreaker || {};
 
+    const user = AuthService.currentUser;
+    const isAssignedTatami = user && user.role === 'tatami' && (!bracket.tatamiId || bracket.tatamiId === user.tatamiId);
+    const canScoreKata = isOrganizer || isAssignedTatami;
+
     const goldName = medals.gold ? medals.gold.name : '_______';
     const silverName = medals.silver ? medals.silver.name : '_______';
     const bronze1Name = medals.bronze1 ? medals.bronze1.name : '_______';
@@ -550,7 +554,7 @@ const BoutEditor = {
               <h6 class="fw-bold text-dark m-0">⚠️ 2-WAY TIE DETECTED FOR MEDAL POSITION</h6>
               <div class="d-flex align-items-center gap-2">
                 <span class="badge bg-warning text-dark">Flag Vote Required</span>
-                ${isOrganizer ? `
+                ${canScoreKata ? `
                   <button class="btn btn-outline-danger btn-sm py-0 px-2 fw-bold" onclick="BoutEditor.undoKataTieBreaker('${bracket.boutId}')">↩️ Undo Tie-Breaker</button>
                 ` : ''}
               </div>
@@ -579,7 +583,7 @@ const BoutEditor = {
             <h6 class="fw-bold text-danger m-0">🔥 3+ WAY TIE - RE-SCORING ROUND (TIED CONTESTANTS ONLY)</h6>
             <div class="d-flex align-items-center gap-2">
               <span class="badge bg-danger">Scoped Re-Score</span>
-              ${isOrganizer ? `
+              ${canScoreKata ? `
                 <button class="btn btn-outline-dark btn-sm py-0 px-2 fw-bold" onclick="BoutEditor.undoKataTieBreaker('${bracket.boutId}')">↩️ Reset Re-Scores</button>
               ` : ''}
             </div>
@@ -604,7 +608,7 @@ const BoutEditor = {
                   <td class="text-start fw-bold">${this.cleanParticipantName(rc.name)} <small class="text-muted">(${rc.branch || 'Dojo'})</small></td>
                   ${[0, 1, 2, 3, 4].map(refIdx => `
                     <td>
-                      ${isOrganizer ? `
+                      ${canScoreKata ? `
                         <input type="number" step="0.1" min="0" max="10" class="form-control form-control-sm text-center py-0" 
                           value="${rc.scores[refIdx] || ''}" 
                           onchange="BoutEditor.updateKataRescore('${bracket.boutId}', '${rc.id}', ${refIdx}, this.value)">
@@ -697,7 +701,7 @@ const BoutEditor = {
                     </td>
                     ${[0, 1, 2, 3, 4].map(refIdx => `
                       <td>
-                        ${isOrganizer ? `
+                        ${canScoreKata ? `
                           <input type="number" step="0.1" min="0" max="10" class="form-control form-control-sm text-center py-0 px-1 fs-7"
                             value="${comp.scores[refIdx] || ''}" 
                             onchange="BoutEditor.updateKataScore('${bracket.boutId}', '${comp.id}', ${refIdx}, this.value)">
@@ -749,6 +753,10 @@ const BoutEditor = {
     SyncService.checkBoutCompletion(boutId);
     SyncService.saveToLocal();
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
+    const ringContainer = document.getElementById('ringBoutContainer');
+    if (ringContainer) {
+      this.renderBoutSheet(boutId, 'ringBoutContainer');
+    }
   },
 
   castKataFlagVote(boutId, winnerId) {
@@ -760,6 +768,10 @@ const BoutEditor = {
     SyncService.checkBoutCompletion(boutId);
     SyncService.saveToLocal();
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
+    const ringContainer = document.getElementById('ringBoutContainer');
+    if (ringContainer) {
+      this.renderBoutSheet(boutId, 'ringBoutContainer');
+    }
   },
 
   updateKataRescore(boutId, compId, refIndex, val) {
@@ -776,6 +788,10 @@ const BoutEditor = {
     SyncService.checkBoutCompletion(boutId);
     SyncService.saveToLocal();
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
+    const ringContainer = document.getElementById('ringBoutContainer');
+    if (ringContainer) {
+      this.renderBoutSheet(boutId, 'ringBoutContainer');
+    }
   },
 
   undoKataTieBreaker(boutId) {
@@ -800,6 +816,10 @@ const BoutEditor = {
     SyncService.checkBoutCompletion(boutId);
     SyncService.saveToLocal();
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
+    const ringContainer = document.getElementById('ringBoutContainer');
+    if (ringContainer) {
+      this.renderBoutSheet(boutId, 'ringBoutContainer');
+    }
   },
 
   openKataCompetitorModal(boutId, compId) {

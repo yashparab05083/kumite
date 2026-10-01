@@ -114,6 +114,20 @@ function scheduleFileSave(jsonStr) {
   }, 300);
 }
 
+function flushDiskSync() {
+  if (latestPendingStateJson) {
+    try {
+      fs.writeFileSync(DATA_FILE, latestPendingStateJson, 'utf8');
+      console.log('💾 Flushed latest state to tournament_data.json on exit');
+      latestPendingStateJson = null;
+    } catch (e) {}
+  }
+}
+
+process.on('SIGINT', () => { flushDiskSync(); process.exit(0); });
+process.on('SIGTERM', () => { flushDiskSync(); process.exit(0); });
+process.on('exit', () => { flushDiskSync(); });
+
 // WebSocket Real-Time Server Setup
 const wss = new WebSocketServer({ server, path: '/ws' });
 
@@ -154,18 +168,80 @@ app.get('/api/tournament', (req, res) => {
   }
 });
 
+function mergeTournamentState(existing, incoming) {
+  if (!existing || !existing.bouts || existing.bouts.length === 0) return incoming;
+  if (!incoming || !incoming.bouts || incoming.bouts.length === 0) return existing;
+
+  // 1. Merge brackets by lastUpdated timestamp (fallback to completed matches count)
+  const mergedBrackets = { ...(existing.brackets || {}) };
+  if (incoming.brackets) {
+    for (const [boutId, incBr] of Object.entries(incoming.brackets)) {
+      const exBr = mergedBrackets[boutId];
+      if (!exBr) {
+        mergedBrackets[boutId] = incBr;
+      } else {
+        const exTime = exBr.lastUpdated || 0;
+        const incTime = incBr.lastUpdated || 0;
+        if (incTime !== exTime) {
+          mergedBrackets[boutId] = incTime > exTime ? incBr : exBr;
+        } else {
+          const incDone = (incBr.matches || []).filter(m => m.status === 'Completed').length;
+          const exDone = (exBr.matches || []).filter(m => m.status === 'Completed').length;
+          mergedBrackets[boutId] = incDone >= exDone ? incBr : exBr;
+        }
+      }
+    }
+  }
+
+  // 2. Merge bouts by lastUpdated timestamp
+  const boutMap = new Map();
+  if (Array.isArray(existing.bouts)) {
+    existing.bouts.forEach(b => boutMap.set(b.id, b));
+  }
+  if (Array.isArray(incoming.bouts)) {
+    incoming.bouts.forEach(incBout => {
+      const exBout = boutMap.get(incBout.id);
+      if (!exBout) {
+        boutMap.set(incBout.id, incBout);
+      } else {
+        const exTime = exBout.lastUpdated || 0;
+        const incTime = incBout.lastUpdated || 0;
+        boutMap.set(incBout.id, incTime >= exTime ? incBout : exBout);
+      }
+    });
+  }
+
+  // 3. Merge tatamis by lastUpdated timestamp
+  const mergedTatamis = (existing.tatamis || []).map((exTatami, idx) => {
+    const incTatami = incoming.tatamis && incoming.tatamis[idx];
+    if (!incTatami) return exTatami;
+    const exTime = exTatami.lastUpdated || 0;
+    const incTime = incTatami.lastUpdated || 0;
+    return incTime >= exTime ? incTatami : exTatami;
+  });
+
+  return {
+    ...existing,
+    ...incoming,
+    bouts: Array.from(boutMap.values()),
+    brackets: mergedBrackets,
+    tatamis: mergedTatamis,
+    lastUpdated: Date.now()
+  };
+}
+
 // 2. POST /api/tournament - Instant RAM update + WebSocket Broadcast + Local File Save
 app.post('/api/tournament', (req, res) => {
   try {
     const stateData = req.body;
     if (!stateData) return res.status(400).json({ error: 'No state data provided' });
 
-    // 1. Update server RAM cache instantly (<1ms)
-    ramCache = stateData;
+    // Intelligently merge incoming changes with RAM cache so concurrent rings never overwrite each other
+    ramCache = mergeTournamentState(ramCache, stateData);
     updateEtag();
 
     // 2. Broadcast live WebSocket update to all connected screens/clients (<1ms)
-    const jsonStr = JSON.stringify(stateData);
+    const jsonStr = JSON.stringify(ramCache);
     broadcastToClients(jsonStr);
 
     // 3. Respond HTTP success immediately to caller without blocking (<1ms)
@@ -223,9 +299,39 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`🚀 Kumite Single-File Tournament Server running on port ${PORT}`);
-  console.log(`📂 Single-file persistence stored in: ${DATA_FILE}`);
-  console.log(`🌐 Website URL: http://localhost:${PORT}`);
-});
+const DEFAULT_PORT = parseInt(process.env.PORT, 10) || 3030;
+
+function getLocalIp() {
+  const os = require('os');
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return 'localhost';
+}
+
+function startServer(port) {
+  server.once('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      const nextPort = port === 3000 ? 3030 : port + 1;
+      console.warn(`⚠️ Port ${port} is currently in use. Automatically trying port ${nextPort}...`);
+      startServer(nextPort);
+    } else {
+      console.error('Server error:', err.message);
+    }
+  });
+
+  server.listen(port, '0.0.0.0', () => {
+    const localIp = getLocalIp();
+    console.log(`🚀 Kumite Single-File Tournament Server running on port ${port}`);
+    console.log(`📂 Single-file persistence stored in: ${DATA_FILE}`);
+    console.log(`💻 Local access:      http://localhost:${port}`);
+    console.log(`📱 Tatami Ring sync:  http://${localIp}:${port}`);
+  });
+}
+
+startServer(DEFAULT_PORT);

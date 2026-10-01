@@ -120,6 +120,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (user.role === 'organizer') {
         renderBoutList('boutSheetsListContainer');
         TatamiManager.renderOrganizerDashboard('tatamiDashboardContainer');
+        const boutEditorView = document.getElementById('boutEditorView');
+        if (BoutEditor.activeBoutId && boutEditorView && boutEditorView.style.display !== 'none') {
+          BoutEditor.renderBoutSheet(BoutEditor.activeBoutId, 'activeBoutDiagramContainer');
+        }
       } else if (user.role === 'tatami') {
         TatamiManager.renderOperatorView(user.tatamiId, 'tatamiOperatorContainer');
       }

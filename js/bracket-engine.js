@@ -302,8 +302,9 @@ const BracketEngine = {
     const targetMatch = bracket.matches[matchIndex];
     if (!targetMatch) return bracket;
 
-    const winner = winnerSide === 'aao' ? targetMatch.aao : targetMatch.aka;
-    const loser = winnerSide === 'aao' ? targetMatch.aka : targetMatch.aao;
+    const isAaoWinner = winnerSide === 'aao' || winnerSide === 'blue';
+    const winner = isAaoWinner ? targetMatch.aao : targetMatch.aka;
+    const loser = isAaoWinner ? targetMatch.aka : targetMatch.aao;
 
     targetMatch.winner = winner;
     targetMatch.loser = loser;
