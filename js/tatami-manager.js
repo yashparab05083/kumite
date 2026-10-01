@@ -194,25 +194,17 @@ const TatamiManager = {
     const bout = SyncService.state.bouts.find(b => b.id === boutId);
     const boutName = bout ? bout.boutName : 'Bout Sheet';
 
-    SyncService.assignBoutToTatami(numericTatamiId, boutId);
-
+    // Instantly close modal backdrop
     const modalEl = document.getElementById('assignBoutModal');
     if (modalEl) {
       const modal = bootstrap.Modal.getInstance(modalEl);
       if (modal) { try { modal.hide(); } catch(e) {} }
     }
-    setTimeout(() => {
-      document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
-      document.body.classList.remove('modal-open');
-      document.body.style.removeProperty('overflow');
-      document.body.style.removeProperty('padding-right');
-    }, 150);
+    document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+    document.body.classList.remove('modal-open');
 
-    this.renderOrganizerDashboard('tatamiDashboardContainer');
-    this.renderOperatorView(numericTatamiId, 'tatamiOperatorContainer');
-    if (typeof renderBoutList === 'function') {
-      renderBoutList('boutSheetsListContainer');
-    }
+    // State update automatically triggers single notifyListeners UI update
+    SyncService.assignBoutToTatami(numericTatamiId, boutId);
 
     const statusEl = document.getElementById('importStatus');
     if (statusEl) {
@@ -223,25 +215,18 @@ const TatamiManager = {
 
   directUnassign(boutId, tatamiId) {
     const numericTatamiId = parseInt(tatamiId, 10);
-    SyncService.unassignBoutFromTatami(boutId);
-
+    
+    // Instantly close modal backdrop
     const modalEl = document.getElementById('assignBoutModal');
     if (modalEl) {
       const modal = bootstrap.Modal.getInstance(modalEl);
       if (modal) { try { modal.hide(); } catch(e) {} }
     }
-    setTimeout(() => {
-      document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
-      document.body.classList.remove('modal-open');
-      document.body.style.removeProperty('overflow');
-      document.body.style.removeProperty('padding-right');
-    }, 150);
+    document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+    document.body.classList.remove('modal-open');
 
-    this.renderOrganizerDashboard('tatamiDashboardContainer');
-    this.renderOperatorView(numericTatamiId, 'tatamiOperatorContainer');
-    if (typeof renderBoutList === 'function') {
-      renderBoutList('boutSheetsListContainer');
-    }
+    // State update automatically triggers single notifyListeners UI update
+    SyncService.unassignBoutFromTatami(boutId);
   },
 
   confirmAssign(tatamiId) {

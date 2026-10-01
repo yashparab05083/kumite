@@ -89,14 +89,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         SyncService.setBoutsAndBrackets(bouts, brackets);
         
-        document.getElementById('importStatus').innerText = `Successfully created ${bouts.length} Bout Sheets! Auto-generating merged PDF download...`;
+        document.getElementById('importStatus').innerText = `✅ Successfully created ${bouts.length} Bout Sheets! Ready to assign and view.`;
         renderBoutList('boutSheetsListContainer');
         TatamiManager.renderOrganizerDashboard('tatamiDashboardContainer');
-
-        // Automatically download all bout sheets in 1 merged landscape PDF
-        setTimeout(() => {
-          BoutEditor.downloadAllBoutsPDF();
-        }, 600);
 
       } catch (err) {
         console.error('Error importing Excel:', err);
@@ -203,8 +198,6 @@ function handleQuickTatamiAssign(boutId, tatamiIdVal) {
     const numericTatamiId = parseInt(tatamiIdVal, 10);
     SyncService.assignBoutToTatami(numericTatamiId, boutId);
   }
-  renderBoutList('boutSheetsListContainer');
-  TatamiManager.renderOrganizerDashboard('tatamiDashboardContainer');
 }
 
 function loadBoutIntoEditor(boutId) {

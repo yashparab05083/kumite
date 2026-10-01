@@ -37,6 +37,7 @@ const SyncService = {
   init() {
     this.loadFromLocal();
     this.loadFromAivenDB();
+    this.initWebSocketSync();
     
     // Auto-restore room code if previously connected
     const savedRoom = localStorage.getItem('kumite_active_room_code');
@@ -77,6 +78,48 @@ const SyncService = {
     }
   },
 
+  initWebSocketSync() {
+    try {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}/ws`;
+      const ws = new WebSocket(wsUrl);
+
+      ws.onmessage = (event) => {
+        if (!event.data) return;
+        if (event.data === 'RESET') {
+          this.loadFromLocal();
+          this.notifyListeners();
+          return;
+        }
+        try {
+          const cloudData = JSON.parse(event.data);
+          if (cloudData && cloudData.bouts && Array.isArray(cloudData.bouts) && cloudData.bouts.length > 0) {
+            const localLastUpdated = (this.state && this.state.lastUpdated) || 0;
+            const cloudLastUpdated = cloudData.lastUpdated || 0;
+
+            if (!this.state.bouts || this.state.bouts.length === 0 || cloudLastUpdated >= localLastUpdated) {
+              this.state = { ...this.state, ...cloudData };
+              localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
+              this.notifyListeners();
+            }
+          }
+        } catch (e) {
+          console.warn('WS JSON parse error:', e);
+        }
+      };
+
+      ws.onclose = () => {
+        setTimeout(() => this.initWebSocketSync(), 3000);
+      };
+
+      ws.onerror = () => {
+        ws.close();
+      };
+    } catch (e) {
+      console.warn('WebSocket init error:', e);
+    }
+  },
+
   async loadFromAivenDB() {
     try {
       // Skip cloud pull if local edit happened within last 4 seconds or a push is in-flight
@@ -84,8 +127,20 @@ const SyncService = {
         return;
       }
 
-      const response = await fetch(this.AIVEN_API_URL);
+      const headers = {};
+      if (this.lastEtag) {
+        headers['If-None-Match'] = this.lastEtag;
+      }
+
+      const response = await fetch(this.AIVEN_API_URL, { headers });
+      if (response.status === 304) {
+        return; // Data has not changed; zero payload & zero DOM re-render overhead!
+      }
+
       if (response.ok) {
+        const etag = response.headers.get('ETag');
+        if (etag) this.lastEtag = etag;
+
         const cloudData = await response.json();
         if (cloudData && cloudData.bouts && Array.isArray(cloudData.bouts) && cloudData.bouts.length > 0) {
           const localLastUpdated = (this.state && this.state.lastUpdated) || 0;
@@ -104,20 +159,32 @@ const SyncService = {
     }
   },
 
-  async pushToAivenDB() {
-    try {
-      if (!this.state || !this.state.bouts || this.state.bouts.length === 0) return;
-      this.isPushing = true;
-      await fetch(this.AIVEN_API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(this.state)
-      });
-    } catch (err) {
-      // Offline fallback
-    } finally {
-      this.isPushing = false;
+  pushToAivenDB() {
+    if (!this.state || !this.state.bouts || this.state.bouts.length === 0) return;
+
+    if (this.pendingPushTimeout) {
+      clearTimeout(this.pendingPushTimeout);
     }
+
+    this.pendingPushTimeout = setTimeout(async () => {
+      this.pendingPushTimeout = null;
+      try {
+        this.isPushing = true;
+        const res = await fetch(this.AIVEN_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(this.state)
+        });
+        if (res.ok) {
+          const etag = res.headers.get('ETag');
+          if (etag) this.lastEtag = etag;
+        }
+      } catch (err) {
+        // Offline fallback
+      } finally {
+        this.isPushing = false;
+      }
+    }, 500);
   },
 
   async confirmResetDatabase() {
@@ -207,15 +274,23 @@ const SyncService = {
       if (this.state.bouts && this.state.bouts.length > 0) {
         localStorage.setItem('kumite_backup_snapshot', serialized);
       }
-      this.notifyListeners();
-      this.broadcastStateToPeers();
-      this.pushToAivenDB();
 
-      if (typeof FirebaseConfig !== 'undefined' && FirebaseConfig.isInitialized && FirebaseConfig.db) {
-        FirebaseConfig.db.ref('kumite_tournament_data_v1').set(this.state).catch(err => {
-          console.warn('Firebase cloud sync push error:', err);
-        });
-      }
+      // Notify UI listeners immediately for instant UI responsiveness
+      this.notifyListeners();
+
+      // Dispatch network pushes asynchronously to prevent UI thread blocking
+      setTimeout(() => {
+        this.broadcastStateToPeers();
+        this.pushToAivenDB();
+
+        if (typeof FirebaseConfig !== 'undefined' && FirebaseConfig.isInitialized && FirebaseConfig.db) {
+          try {
+            FirebaseConfig.db.ref('kumite_tournament_data_v1').set(this.state).catch(err => {
+              console.warn('Firebase cloud sync push error:', err);
+            });
+          } catch (e) {}
+        }
+      }, 0);
     } catch (e) {
       console.error('Failed to save local state:', e);
     }
