@@ -205,12 +205,13 @@ const BoutEditor = {
     const isOrganizer = AuthService.currentUser && AuthService.currentUser.role === 'organizer';
 
     const html = `
-      <!-- Top Action Toolbar (PDF Export & Print) -->
+      <!-- Top Action Toolbar (PDF Export, Print & Submit) -->
       <div class="d-flex justify-content-between align-items-center mb-3 bg-light p-2 rounded border print-hide">
-        <div class="d-flex gap-2">
+        <div class="d-flex gap-2 flex-wrap align-items-center">
           <button class="btn btn-danger btn-sm fw-bold" onclick="BoutEditor.downloadBoutPDF('${boutId}')">📄 Download PDF (1 Page)</button>
           <button class="btn btn-warning text-dark btn-sm fw-bold" onclick="BoutEditor.downloadAllBoutsPDF()">📥 Download All Bout Sheets PDF</button>
           <button class="btn btn-secondary btn-sm fw-bold" onclick="BoutEditor.printBoutSheet()">🖨️ Print Sheet</button>
+          <button id="submitBtn_${boutId}" class="btn btn-success btn-sm fw-bold px-3 shadow-sm" onclick="BoutEditor.submitAndFinishBout('${boutId}')">💾 Submit / Finish Bout</button>
         </div>
         ${isOrganizer ? `
           <div class="d-flex align-items-center gap-2">
@@ -225,10 +226,52 @@ const BoutEditor = {
         ` : ''}
       </div>
 
+      <div id="submitBoutStatus_${boutId}" style="display: none;"></div>
+
       ${bracket.eventType === 'Kata' ? this.generateKataScoreSheetHTML(bracket, isOrganizer) : this.generateBoutSheetHTML(bracket, isOrganizer)}
     `;
 
     container.innerHTML = html;
+  },
+
+  async submitAndFinishBout(boutId) {
+    const bracket = SyncService.state.brackets[boutId];
+    if (!bracket) return alert('Bout sheet not found!');
+
+    const btn = document.getElementById(`submitBtn_${boutId}`);
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '⏳ Submitting...';
+    }
+
+    SyncService.checkBoutCompletion(boutId);
+    const ok = await SyncService.submitBoutToServer(boutId);
+
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '💾 Submit / Finish Bout';
+    }
+
+    const bout = SyncService.state.bouts.find(b => b.id === boutId);
+    const statusText = bout ? bout.status : 'Saved';
+
+    const statusEl = document.getElementById(`submitBoutStatus_${boutId}`);
+    if (statusEl) {
+      statusEl.className = 'alert alert-success alert-dismissible fade show my-2 py-2 fs-7 print-hide shadow-sm';
+      statusEl.innerHTML = `
+        <strong>✅ Bout Results Submitted Successfully!</strong> Results for "${bracket.boutName}" have been saved and synced to the cloud server. Current Status: <strong>${statusText}</strong>.
+        <button type="button" class="btn-close py-2" data-bs-dismiss="alert"></button>
+      `;
+      statusEl.style.display = 'block';
+    } else {
+      alert(`✅ Bout results for "${bracket.boutName}" submitted and saved to cloud server!`);
+    }
+
+    this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
+    const ringContainer = document.getElementById('ringBoutContainer');
+    if (ringContainer) {
+      this.renderBoutSheet(boutId, 'ringBoutContainer');
+    }
   },
 
   // Export Single Active Bout Sheet as 1-Page Landscape PDF
@@ -751,7 +794,7 @@ const BoutEditor = {
 
     BracketEngine.recalculateKataRanks(bracket);
     SyncService.checkBoutCompletion(boutId);
-    SyncService.saveToLocal();
+    SyncService.saveToLocalOnly();
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
     const ringContainer = document.getElementById('ringBoutContainer');
     if (ringContainer) {
@@ -766,7 +809,7 @@ const BoutEditor = {
     bracket.tieBreaker.flagVote.winnerId = winnerId;
     BracketEngine.recalculateKataRanks(bracket);
     SyncService.checkBoutCompletion(boutId);
-    SyncService.saveToLocal();
+    SyncService.saveToLocalOnly();
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
     const ringContainer = document.getElementById('ringBoutContainer');
     if (ringContainer) {
@@ -786,7 +829,7 @@ const BoutEditor = {
 
     BracketEngine.recalculateKataRanks(bracket);
     SyncService.checkBoutCompletion(boutId);
-    SyncService.saveToLocal();
+    SyncService.saveToLocalOnly();
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
     const ringContainer = document.getElementById('ringBoutContainer');
     if (ringContainer) {

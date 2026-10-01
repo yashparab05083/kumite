@@ -294,6 +294,43 @@ const SyncService = {
     }
   },
 
+  saveToLocalOnly() {
+    try {
+      this.state.lastUpdated = Date.now();
+      this.lastLocalEditTime = Date.now();
+
+      const serialized = JSON.stringify(this.state);
+      localStorage.setItem(this.STORAGE_KEY, serialized);
+      if (this.state.bouts && this.state.bouts.length > 0) {
+        localStorage.setItem('kumite_backup_snapshot', serialized);
+      }
+    } catch (e) {
+      console.error('Failed to save local state:', e);
+    }
+  },
+
+  async submitBoutToServer(boutId) {
+    try {
+      this.checkBoutCompletion(boutId);
+      const bout = this.state.bouts.find(b => b.id === boutId);
+      if (bout) {
+        bout.lastUpdated = Date.now();
+      }
+      const bracket = this.state.brackets[boutId];
+      if (bracket) {
+        bracket.lastUpdated = Date.now();
+      }
+
+      this.saveToLocal();
+      await this.pushToAivenDB();
+      this.broadcastStateToPeers();
+      return true;
+    } catch (e) {
+      console.error('Error submitting bout to server:', e);
+      return false;
+    }
+  },
+
   saveToLocal() {
     try {
       this.state.lastUpdated = Date.now();
