@@ -112,6 +112,30 @@ body {
   page-break-after: always !important;
 }
 
+/* Bout Sheets Queue List Container with Scroll Option */
+#boutSheetsListContainer {
+  max-height: calc(100vh - 180px);
+  min-height: 400px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: #0d6efd #f8f9fa;
+}
+
+#boutSheetsListContainer::-webkit-scrollbar {
+  width: 6px;
+}
+
+#boutSheetsListContainer::-webkit-scrollbar-track {
+  background: #f8f9fa;
+  border-radius: 4px;
+}
+
+#boutSheetsListContainer::-webkit-scrollbar-thumb {
+  background-color: #0d6efd;
+  border-radius: 4px;
+}
+
 @media print {
   @page {
     size: A4 landscape;
