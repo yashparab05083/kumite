@@ -172,6 +172,12 @@ const ExcelImporter = {
             const ageNum = parseInt(ageStr, 10);
             const age = isNaN(ageNum) ? 10 : ageNum;
 
+            const beltRaw = findVal(['kyu', 'belt', 'dan', 'grade', 'rank']);
+            const belt = this.parseBelt(beltRaw);
+            
+            const rawBranch = findVal(['branch', 'dojo', 'club', 'school', 'academy', 'team']);
+            const branch = (rawBranch !== undefined && rawBranch !== null && String(rawBranch).trim() !== '') ? String(rawBranch).trim() : 'Main Branch';
+
             const rawBout = findVal(['bout', 'kata bout', 'bouts', 'katabout', 'group', 'bout code']);
             const bout = (rawBout !== undefined && rawBout !== null && String(rawBout).trim() !== '') 
               ? String(rawBout).trim() 
