@@ -410,6 +410,7 @@ const BracketEngine = {
       age: p.age,
       beltLabel: p.beltLabel,
       scores: [5.0, 5.0, 5.0, 5.0, 5.0],
+      refereeTouched: [false, false, false, false, false],
       hasScored: false,
       totalScore: 0,
       place: null
@@ -472,13 +473,20 @@ const BracketEngine = {
       if (!Array.isArray(comp.scores) || comp.scores.length !== 5) {
         comp.scores = [5.0, 5.0, 5.0, 5.0, 5.0];
       }
-      if (comp.hasScored === undefined) {
-        const hasNonDefaultScore = comp.scores.some(s => parseFloat(s) !== 5.0 && parseFloat(s) !== 0);
-        comp.hasScored = (comp.totalScore > 0) || hasNonDefaultScore;
+      if (!Array.isArray(comp.refereeTouched) || comp.refereeTouched.length !== 5) {
+        if (comp.hasScored || comp.totalScore > 0) {
+          comp.refereeTouched = [true, true, true, true, true];
+        } else {
+          comp.refereeTouched = [false, false, false, false, false];
+        }
       }
 
+      comp.hasScored = comp.refereeTouched.some(t => t);
+
       if (comp.hasScored) {
-        const sum = comp.scores.reduce((acc, val) => acc + (parseFloat(val) || 0), 0);
+        const sum = comp.scores.reduce((acc, val, idx) => {
+          return acc + (comp.refereeTouched[idx] ? (parseFloat(val) || 0) : 0);
+        }, 0);
         comp.totalScore = Math.round(sum * 100) / 100;
       } else {
         comp.totalScore = 0;

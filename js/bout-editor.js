@@ -766,8 +766,8 @@ const BoutEditor = {
                               id="kataInput_${bracket.boutId}_${comp.id}_${refIdx}"
                               class="form-control form-control-sm text-center py-0 px-1 fs-7"
                               value="${scoreVal}" 
-                              onfocus="BoutEditor.onKataScoreFocus('${bracket.boutId}', '${comp.id}')"
-                              onclick="BoutEditor.onKataScoreFocus('${bracket.boutId}', '${comp.id}')"
+                              onfocus="BoutEditor.onKataScoreFocus('${bracket.boutId}', '${comp.id}', ${refIdx})"
+                              onclick="BoutEditor.onKataScoreFocus('${bracket.boutId}', '${comp.id}', ${refIdx})"
                               oninput="BoutEditor.updateKataScore('${bracket.boutId}', '${comp.id}', ${refIdx}, this.value)"
                               onchange="BoutEditor.updateKataScore('${bracket.boutId}', '${comp.id}', ${refIdx}, this.value)">
                           ` : `
@@ -805,14 +805,19 @@ const BoutEditor = {
     `;
   },
 
-  onKataScoreFocus(boutId, compId) {
+  onKataScoreFocus(boutId, compId, refIndex) {
     const bracket = SyncService.state.brackets[boutId];
     if (!bracket || bracket.eventType !== 'Kata') return;
 
     const comp = bracket.competitors.find(c => c.id === compId);
     if (!comp) return;
 
-    if (!comp.hasScored) {
+    if (!Array.isArray(comp.refereeTouched) || comp.refereeTouched.length !== 5) {
+      comp.refereeTouched = [false, false, false, false, false];
+    }
+
+    if (refIndex !== undefined && refIndex !== null && !comp.refereeTouched[refIndex]) {
+      comp.refereeTouched[refIndex] = true;
       comp.hasScored = true;
       if (!Array.isArray(comp.scores) || comp.scores.length !== 5) {
         comp.scores = [5.0, 5.0, 5.0, 5.0, 5.0];
@@ -831,7 +836,12 @@ const BoutEditor = {
     const comp = bracket.competitors.find(c => c.id === compId);
     if (!comp) return;
 
+    if (!Array.isArray(comp.refereeTouched) || comp.refereeTouched.length !== 5) {
+      comp.refereeTouched = [false, false, false, false, false];
+    }
+    comp.refereeTouched[refIndex] = true;
     comp.hasScored = true;
+
     if (!Array.isArray(comp.scores) || comp.scores.length !== 5) {
       comp.scores = [5.0, 5.0, 5.0, 5.0, 5.0];
     }
@@ -1173,7 +1183,9 @@ const BoutEditor = {
       no: bracket.competitors.length + 1,
       name,
       branch: branch || 'Main Dojo',
-      scores: [0, 0, 0, 0, 0],
+      scores: [5.0, 5.0, 5.0, 5.0, 5.0],
+      refereeTouched: [false, false, false, false, false],
+      hasScored: false,
       totalScore: 0,
       place: null
     };
