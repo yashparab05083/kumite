@@ -576,7 +576,9 @@ const BracketEngine = {
               no: idx + 1,
               name: c.name,
               branch: c.branch,
-              scores: [0, 0, 0, 0, 0],
+              scores: [5.0, 5.0, 5.0, 5.0, 5.0],
+              refereeTouched: [false, false, false, false, false],
+              hasScored: false,
               totalScore: 0,
               place: null
             }))
@@ -584,19 +586,36 @@ const BracketEngine = {
           break;
         } else {
           // Evaluate existing 3+ Way Re-Score Round
-          const allRescored = rescore.competitors.every(rc => rc.scores.some(s => parseFloat(s) > 0));
+          rescore.competitors.forEach(rc => {
+            if (!Array.isArray(rc.scores) || rc.scores.length !== 5) {
+              rc.scores = [5.0, 5.0, 5.0, 5.0, 5.0];
+            }
+            if (!Array.isArray(rc.refereeTouched) || rc.refereeTouched.length !== 5) {
+              if (rc.hasScored || rc.totalScore > 0) {
+                rc.refereeTouched = [true, true, true, true, true];
+              } else {
+                rc.refereeTouched = [false, false, false, false, false];
+              }
+            }
+            rc.hasScored = rc.refereeTouched.some(t => t);
+
+            if (rc.hasScored) {
+              const sum = rc.scores.reduce((acc, v, idx) => {
+                return acc + (rc.refereeTouched[idx] ? (parseFloat(v) || 0) : 0);
+              }, 0);
+              rc.totalScore = Math.round(sum * 100) / 100;
+            } else {
+              rc.totalScore = 0;
+            }
+          });
+
+          const allRescored = rescore.competitors.every(rc => rc.hasScored);
 
           if (!allRescored) {
             bracket.tieBreaker.activeTie = '3WAY_RESCORE';
             bracket.tieBreaker.flagVote = null;
             break; // Wait for operator to enter re-scores
           }
-
-          // Compute re-score totals
-          rescore.competitors.forEach(rc => {
-            const sum = rc.scores.reduce((acc, v) => acc + (parseFloat(v) || 0), 0);
-            rc.totalScore = Math.round(sum * 100) / 100;
-          });
 
           // Group re-scores by totalScore
           const rescoreBins = {};
@@ -640,7 +659,12 @@ const BracketEngine = {
             } else if (rBin.length >= 3) {
               // Re-score produced another 3-Way Tie! Reset re-scores for Next Round
               subTieFound = true;
-              rBin.forEach(rc => rc.scores = [0, 0, 0, 0, 0]);
+              rBin.forEach(rc => {
+                rc.scores = [5.0, 5.0, 5.0, 5.0, 5.0];
+                rc.refereeTouched = [false, false, false, false, false];
+                rc.hasScored = false;
+                rc.totalScore = 0;
+              });
               bracket.tieBreaker.activeTie = '3WAY_RESCORE';
               bracket.tieBreaker.flagVote = null;
               break;
@@ -659,24 +683,37 @@ const BracketEngine = {
       }
     }
 
-    // Assign Medals based on final places
-    bracket.competitors.forEach(c => {
-      if (c.place === 1) bracket.medals.gold = c;
-      else if (c.place === 2) bracket.medals.silver = c;
-      else if (c.place === 3) {
-        if (!bracket.medals.bronze1) bracket.medals.bronze1 = c;
-        else if (!bracket.medals.bronze2) bracket.medals.bronze2 = c;
-      } else if (c.place === 4 && !bracket.medals.bronze2) {
-        bracket.medals.bronze2 = c;
-      }
-    });
+    // Now check if ALL competitors in the bout have been scored AND no tie is pending
+    const allScored = bracket.competitors.length > 0 && bracket.competitors.every(c => c.hasScored);
+    const tiePending = bracket.tieBreaker && bracket.tieBreaker.activeTie !== null;
 
-    // Fallback dual bronze if unassigned
-    if (!bracket.medals.bronze1 && activeScored.length >= 3) {
-      bracket.medals.bronze1 = activeScored[2] || null;
-    }
-    if (!bracket.medals.bronze2 && activeScored.length >= 4) {
-      bracket.medals.bronze2 = activeScored[3] || null;
+    if (allScored && !tiePending) {
+      // Assign Medals based on final places
+      bracket.competitors.forEach(c => {
+        if (c.place === 1) bracket.medals.gold = c;
+        else if (c.place === 2) bracket.medals.silver = c;
+        else if (c.place === 3) {
+          if (!bracket.medals.bronze1) bracket.medals.bronze1 = c;
+          else if (!bracket.medals.bronze2) bracket.medals.bronze2 = c;
+        } else if (c.place === 4 && !bracket.medals.bronze2) {
+          bracket.medals.bronze2 = c;
+        }
+      });
+
+      // Fallback dual bronze if unassigned
+      if (!bracket.medals.bronze1 && activeScored.length >= 3) {
+        bracket.medals.bronze1 = activeScored[2] || null;
+      }
+      if (!bracket.medals.bronze2 && activeScored.length >= 4) {
+        bracket.medals.bronze2 = activeScored[3] || null;
+      }
+    } else {
+      // Keep medals uncalculated / hidden until ALL competitors are scored AND tie is resolved!
+      bracket.medals = { gold: null, silver: null, bronze1: null, bronze2: null };
+      if (!allScored || tiePending) {
+        // Clear places while bout is in progress or tie is pending
+        bracket.competitors.forEach(c => c.place = null);
+      }
     }
   }
 };

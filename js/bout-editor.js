@@ -664,18 +664,26 @@ const BoutEditor = {
                 <tr>
                   <td class="fw-bold">${idx + 1}</td>
                   <td class="text-start fw-bold">${this.cleanParticipantName(rc.name)} <small class="text-muted">(${rc.branch || 'Dojo'})</small></td>
-                  ${[0, 1, 2, 3, 4].map(refIdx => `
-                    <td>
-                      ${canScoreKata ? `
-                        <input type="number" step="0.1" min="0" max="10" class="form-control form-control-sm text-center py-0" 
-                          value="${rc.scores[refIdx] || ''}" 
-                          onchange="BoutEditor.updateKataRescore('${bracket.boutId}', '${rc.id}', ${refIdx}, this.value)">
-                      ` : `
-                        <span>${rc.scores[refIdx] ? rc.scores[refIdx].toFixed(1) : '-'}</span>
-                      `}
-                    </td>
-                  `).join('')}
-                  <td class="fw-bold text-danger fs-6">${rc.totalScore ? rc.totalScore.toFixed(2) : '0.00'}</td>
+                  ${[0, 1, 2, 3, 4].map(refIdx => {
+                    const scoreVal = (rc.scores && rc.scores[refIdx] !== undefined && rc.scores[refIdx] !== null) ? Number(rc.scores[refIdx]).toFixed(1) : '5.0';
+                    return `
+                      <td>
+                        ${canScoreKata ? `
+                          <input type="number" step="0.1" min="0" max="10" 
+                            id="kataRescoreInput_${bracket.boutId}_${rc.id}_${refIdx}"
+                            class="form-control form-control-sm text-center py-0 px-1 fs-7" 
+                            value="${scoreVal}" 
+                            onfocus="BoutEditor.onKataRescoreFocus('${bracket.boutId}', '${rc.id}', ${refIdx})"
+                            onclick="BoutEditor.onKataRescoreFocus('${bracket.boutId}', '${rc.id}', ${refIdx})"
+                            oninput="BoutEditor.updateKataRescore('${bracket.boutId}', '${rc.id}', ${refIdx}, this.value)"
+                            onchange="BoutEditor.updateKataRescore('${bracket.boutId}', '${rc.id}', ${refIdx}, this.value)">
+                        ` : `
+                          <span class="fw-semibold">${scoreVal}</span>
+                        `}
+                      </td>
+                    `;
+                  }).join('')}
+                  <td class="fw-bold text-danger fs-6 kata-rescore-total-${rc.id}">${rc.hasScored && rc.totalScore ? rc.totalScore.toFixed(2) : '0.00'}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -917,6 +925,15 @@ const BoutEditor = {
 
       footerEls.forEach(el => el.innerHTML = footerHTML);
     }
+
+    if (bracket.tieBreaker && bracket.tieBreaker.rescoreRound && bracket.tieBreaker.rescoreRound.competitors) {
+      bracket.tieBreaker.rescoreRound.competitors.forEach(rc => {
+        const rescoreTotalEls = document.querySelectorAll(`.kata-rescore-total-${rc.id}`);
+        rescoreTotalEls.forEach(el => {
+          el.textContent = (rc.hasScored && rc.totalScore) ? rc.totalScore.toFixed(2) : '0.00';
+        });
+      });
+    }
   },
 
   castKataFlagVote(boutId, winnerId) {
@@ -934,23 +951,64 @@ const BoutEditor = {
     }
   },
 
+  onKataRescoreFocus(boutId, compId, refIndex) {
+    const bracket = SyncService.state.brackets[boutId];
+    if (!bracket || bracket.eventType !== 'Kata' || !bracket.tieBreaker || !bracket.tieBreaker.rescoreRound) return;
+
+    const rc = bracket.tieBreaker.rescoreRound.competitors.find(c => c.id === compId);
+    if (!rc) return;
+
+    if (!Array.isArray(rc.refereeTouched) || rc.refereeTouched.length !== 5) {
+      rc.refereeTouched = [false, false, false, false, false];
+    }
+
+    if (refIndex !== undefined && refIndex !== null && !rc.refereeTouched[refIndex]) {
+      rc.refereeTouched[refIndex] = true;
+      rc.hasScored = true;
+      if (!Array.isArray(rc.scores) || rc.scores.length !== 5) {
+        rc.scores = [5.0, 5.0, 5.0, 5.0, 5.0];
+      }
+      BracketEngine.recalculateKataRanks(bracket);
+      SyncService.checkBoutCompletion(boutId);
+      SyncService.saveToLocalOnly();
+      this.updateKataDOM(boutId);
+    }
+  },
+
   updateKataRescore(boutId, compId, refIndex, val) {
     const bracket = SyncService.state.brackets[boutId];
     if (!bracket || bracket.eventType !== 'Kata' || !bracket.tieBreaker || !bracket.tieBreaker.rescoreRound) return;
 
-    const rescoreComp = bracket.tieBreaker.rescoreRound.competitors.find(c => c.id === compId);
-    if (!rescoreComp) return;
+    const rc = bracket.tieBreaker.rescoreRound.competitors.find(c => c.id === compId);
+    if (!rc) return;
 
-    const scoreNum = parseFloat(val) || 0;
-    rescoreComp.scores[refIndex] = scoreNum;
+    if (!Array.isArray(rc.refereeTouched) || rc.refereeTouched.length !== 5) {
+      rc.refereeTouched = [false, false, false, false, false];
+    }
+    rc.refereeTouched[refIndex] = true;
+    rc.hasScored = true;
 
+    if (!Array.isArray(rc.scores) || rc.scores.length !== 5) {
+      rc.scores = [5.0, 5.0, 5.0, 5.0, 5.0];
+    }
+
+    const scoreNum = val === '' ? 5.0 : (parseFloat(val) || 0);
+    rc.scores[refIndex] = scoreNum;
+
+    const prevActiveTie = bracket.tieBreaker ? bracket.tieBreaker.activeTie : null;
     BracketEngine.recalculateKataRanks(bracket);
     SyncService.checkBoutCompletion(boutId);
     SyncService.saveToLocalOnly();
-    this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
-    const ringContainer = document.getElementById('ringBoutContainer');
-    if (ringContainer) {
-      this.renderBoutSheet(boutId, 'ringBoutContainer');
+
+    const newActiveTie = bracket.tieBreaker ? bracket.tieBreaker.activeTie : null;
+    if (prevActiveTie !== newActiveTie) {
+      this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
+      const ringContainer = document.getElementById('ringBoutContainer');
+      if (ringContainer) {
+        this.renderBoutSheet(boutId, 'ringBoutContainer');
+      }
+    } else {
+      this.updateKataDOM(boutId);
     }
   },
 
