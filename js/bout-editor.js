@@ -311,6 +311,8 @@ const BoutEditor = {
     BracketEngine.recalculateKataRanks(bracket);
     SyncService.checkBoutCompletion(boutId);
     SyncService.saveToLocal();
+    SyncService.pushToAivenDB();
+    SyncService.stopBoutScoring();
 
     // 4. Re-render bout sheet
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
@@ -888,7 +890,7 @@ const BoutEditor = {
   },
 
   onKataScoreFocus(boutId, compId, refIndex) {
-    SyncService.lastLocalEditTime = Date.now();
+    SyncService.startBoutScoring(boutId);
     const bracket = SyncService.state.brackets[boutId];
     if (!bracket || bracket.eventType !== 'Kata') return;
 
@@ -913,7 +915,7 @@ const BoutEditor = {
   },
 
   updateKataScore(boutId, compId, refIndex, val) {
-    SyncService.lastLocalEditTime = Date.now();
+    SyncService.startBoutScoring(boutId);
     const bracket = SyncService.state.brackets[boutId];
     if (!bracket || bracket.eventType !== 'Kata') return;
 

@@ -38,6 +38,20 @@ const SyncService = {
 
   lastTatamiEtag: null,
 
+  isScoringActive: false,
+  activeScoringBoutId: null,
+
+  startBoutScoring(boutId) {
+    this.isScoringActive = true;
+    this.activeScoringBoutId = boutId || null;
+    this.lastLocalEditTime = Date.now();
+  },
+
+  stopBoutScoring() {
+    this.isScoringActive = false;
+    this.activeScoringBoutId = null;
+  },
+
   init() {
     this.loadFromLocal();
     this.loadFromAivenDB();
@@ -234,7 +248,7 @@ const SyncService = {
 
   async loadTatamiSyncFromAivenDB() {
     try {
-      if (this.isPushing) return;
+      if (this.isPushing || this.isScoringActive) return;
 
       const headers = {};
       if (this.lastTatamiEtag) {
@@ -264,8 +278,8 @@ const SyncService = {
 
   async loadFromAivenDB() {
     try {
-      // Skip pull if push is in-flight
-      if (this.isPushing) return;
+      // Skip pull if push is in-flight or bout scoring is active
+      if (this.isPushing || this.isScoringActive) return;
 
       const headers = {};
       if (this.lastEtag) {
@@ -412,6 +426,7 @@ const SyncService = {
   },
 
   notifyListeners() {
+    if (this.isScoringActive) return; // Prevent background re-rendering while user is actively entering scores
     this.listeners.forEach(cb => cb(this.state));
   },
 
@@ -474,6 +489,7 @@ const SyncService = {
         bracket.lastUpdated = Date.now();
       }
 
+      this.stopBoutScoring();
       this.saveToLocal();
       await this.pushToAivenDB();
       this.broadcastStateToPeers();

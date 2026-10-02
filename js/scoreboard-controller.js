@@ -24,6 +24,9 @@ const ScoreboardController = {
       match
     };
 
+    // Pause background polling while Kumite match is live
+    SyncService.startBoutScoring(boutId);
+
     // Populate Scoreboard Headers
     const redName = match.aka ? match.aka.name : 'BYE';
     const blueName = match.aao ? match.aao.name : 'BYE';
@@ -47,6 +50,7 @@ const ScoreboardController = {
 
   // Close scoreboard and return smoothly to active view
   closeScoreboard() {
+    SyncService.stopBoutScoring();
     document.getElementById('scoreboardSection').style.display = 'none';
     document.getElementById('mainNavTabs').style.display = 'flex';
     
@@ -100,6 +104,7 @@ const ScoreboardController = {
     };
 
     SyncService.commitMatchResult(boutId, matchNumber, winnerSide, matchScore);
+    SyncService.pushToAivenDB();
 
     // Smooth transition back to view after winner banner display
     setTimeout(() => {
