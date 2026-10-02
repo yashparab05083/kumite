@@ -287,6 +287,45 @@ app.get('/api/tournament', (req, res) => {
   }
 });
 
+// 1b. GET /api/sync/tatamis - Lightweight Tatami & Bout assignment sync (<2KB payload)
+app.get('/api/sync/tatamis', (req, res) => {
+  try {
+    res.setHeader('Cache-Control', 'no-cache');
+    if (!ramCache || !ramCache.tatamis) {
+      return res.json({ tatamis: [], bouts: [], lastUpdated: 0 });
+    }
+
+    const lightState = {
+      tatamis: ramCache.tatamis,
+      bouts: (ramCache.bouts || []).map(b => ({
+        id: b.id,
+        boutName: b.boutName,
+        tatamiId: b.tatamiId,
+        status: b.status,
+        eventType: b.eventType,
+        ageCategory: b.ageCategory,
+        gender: b.gender,
+        beltTier: b.beltTier,
+        lastUpdated: b.lastUpdated || 0
+      })),
+      lastUpdated: ramCache.lastUpdated || 0
+    };
+
+    const hash = crypto.createHash('md5').update(JSON.stringify(lightState)).digest('hex').substring(0, 12);
+    const lightEtag = `"tatami-v${stateVersion}-${hash}"`;
+    res.setHeader('ETag', lightEtag);
+
+    if (req.headers['if-none-match'] === lightEtag) {
+      return res.status(304).end();
+    }
+
+    return res.json(lightState);
+  } catch (err) {
+    console.error('Fetch tatami sync API error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /**
  * Intelligent Multi-User Timestamp Merge Function
  * Resolves concurrent submissions from different Tatamis without data loss
@@ -385,6 +424,28 @@ app.post('/api/tournament', (req, res) => {
 
   } catch (err) {
     console.error('Save tournament API error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2b. POST /api/sync/tatamis - Fast Tatami & Bout assignment update (<2KB payload)
+app.post('/api/sync/tatamis', (req, res) => {
+  try {
+    const stateData = req.body;
+    if (!stateData) return res.status(400).json({ error: 'No state data provided' });
+
+    ramCache = mergeTournamentState(ramCache, stateData);
+    updateEtag();
+
+    const jsonStr = JSON.stringify(ramCache);
+    broadcastToClients(jsonStr);
+
+    res.json({ success: true, message: 'Tatami assignments updated successfully!' });
+
+    scheduleFileSave(jsonStr);
+    scheduleDbSave(ramCache);
+  } catch (err) {
+    console.error('Save tatami sync API error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

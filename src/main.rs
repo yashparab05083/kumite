@@ -115,6 +115,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/api/tournament", get(get_tournament).post(save_tournament))
+        .route("/api/sync/tatamis", get(get_tatami_sync).post(save_tournament))
         .route("/api/reset", post(reset_tournament))
         .route("/api/health", get(health_check))
         .route("/ws", get(ws_handler))
@@ -324,6 +325,65 @@ async fn get_tournament(
         Json(Value::Null),
     )
         .into_response()
+}
+
+// 1b. GET /api/sync/tatamis - Lightweight Tatami & Bout assignment sync (<2KB payload)
+async fn get_tatami_sync(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    let current_version = state.version.load(Ordering::Relaxed);
+    let etag = format!("\"tatami-v{}\"", current_version);
+
+    if let Some(if_none_match) = headers.get(header::IF_NONE_MATCH) {
+        if let Ok(val) = if_none_match.to_str() {
+            if val == etag {
+                return (StatusCode::NOT_MODIFIED, [("ETag", etag)]).into_response();
+            }
+        }
+    }
+
+    let r = state.cache.read().await;
+    if let Some(ref cached_data) = *r {
+        let tatamis = cached_data.get("tatamis").cloned().unwrap_or(json!([]));
+        let empty_vec = vec![];
+        let bouts_arr = cached_data.get("bouts").and_then(|b| b.as_array()).unwrap_or(&empty_vec);
+        let light_bouts: Vec<Value> = bouts_arr.iter().map(|b| {
+            json!({
+                "id": b.get("id"),
+                "boutName": b.get("boutName"),
+                "tatamiId": b.get("tatamiId"),
+                "status": b.get("status"),
+                "eventType": b.get("eventType"),
+                "ageCategory": b.get("ageCategory"),
+                "gender": b.get("gender"),
+                "beltTier": b.get("beltTier"),
+                "lastUpdated": b.get("lastUpdated").unwrap_or(&json!(0))
+            })
+        }).collect();
+
+        let light_state = json!({
+            "tatamis": tatamis,
+            "bouts": light_bouts,
+            "lastUpdated": cached_data.get("lastUpdated").unwrap_or(&json!(0))
+        });
+
+        return (
+            StatusCode::OK,
+            [
+                ("Content-Type", "application/json"),
+                ("ETag", etag),
+                ("Cache-Control", "no-cache"),
+            ],
+            Json(light_state),
+        ).into_response();
+    }
+
+    (
+        StatusCode::OK,
+        [("Content-Type", "application/json")],
+        Json(json!({ "tatamis": [], "bouts": [], "lastUpdated": 0 })),
+    ).into_response()
 }
 
 // 2. POST /api/tournament - Save state to RAM & Database + Broadcast

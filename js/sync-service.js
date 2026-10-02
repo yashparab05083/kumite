@@ -33,11 +33,15 @@ const SyncService = {
   isHost: false,
 
   AIVEN_API_URL: '/api/tournament',
+  TATAMI_API_URL: '/api/sync/tatamis',
   GITHUB_RAW_URL: 'https://raw.githubusercontent.com/yashparab05083/kumite/main/tournament_data.json',
+
+  lastTatamiEtag: null,
 
   init() {
     this.loadFromLocal();
     this.loadFromAivenDB();
+    this.loadTatamiSyncFromAivenDB();
     this.initWebSocketSync();
     
     // Auto-restore room code if previously connected
@@ -54,10 +58,15 @@ const SyncService = {
       }
     });
 
-    // Periodic 5-second background poll for multi-device live sync
+    // Lightweight 5-second Tatami ring & bout assignment pull (<2KB payload, high response speed)
+    setInterval(() => {
+      this.loadTatamiSyncFromAivenDB();
+    }, 5000);
+
+    // 15-second background full tournament state pull safeguard
     setInterval(() => {
       this.loadFromAivenDB();
-    }, 5000);
+    }, 15000);
 
     // Firebase Cloud Sync (Only merges if valid cloud bouts exist)
     if (typeof FirebaseConfig !== 'undefined') {
@@ -68,8 +77,8 @@ const SyncService = {
           tournamentRef.on('value', (snapshot) => {
             const cloudData = snapshot.val();
             if (cloudData && cloudData.bouts && Array.isArray(cloudData.bouts) && cloudData.bouts.length > 0) {
-              this.state = { ...this.state, ...cloudData };
-              this.saveToLocal();
+              this.mergeState(cloudData);
+              this.saveToLocalOnly();
             }
           });
         } catch (err) {
@@ -77,6 +86,88 @@ const SyncService = {
         }
       }
     }
+  },
+
+  mergeState(incoming) {
+    if (!incoming) return;
+    if (!this.state || !this.state.bouts || this.state.bouts.length === 0) {
+      this.state = { ...this.state, ...incoming };
+      return;
+    }
+
+    // 1. Merge bouts by lastUpdated timestamp
+    const boutMap = new Map();
+    if (Array.isArray(this.state.bouts)) {
+      this.state.bouts.forEach(b => boutMap.set(b.id, b));
+    }
+
+    if (Array.isArray(incoming.bouts)) {
+      incoming.bouts.forEach(incBout => {
+        const exBout = boutMap.get(incBout.id);
+        if (!exBout) {
+          boutMap.set(incBout.id, incBout);
+        } else {
+          const exTime = exBout.lastUpdated || 0;
+          const incTime = incBout.lastUpdated || 0;
+          if (incTime >= exTime) {
+            boutMap.set(incBout.id, { ...exBout, ...incBout });
+          } else {
+            boutMap.set(incBout.id, { ...incBout, ...exBout });
+          }
+        }
+      });
+    }
+
+    // 2. Merge brackets by lastUpdated timestamp
+    const mergedBrackets = { ...(this.state.brackets || {}) };
+    if (incoming.brackets) {
+      for (const [boutId, incBr] of Object.entries(incoming.brackets)) {
+        const exBr = mergedBrackets[boutId];
+        if (!exBr) {
+          mergedBrackets[boutId] = incBr;
+        } else {
+          const exTime = exBr.lastUpdated || 0;
+          const incTime = incBr.lastUpdated || 0;
+          if (incTime >= exTime) {
+            mergedBrackets[boutId] = incBr;
+          }
+        }
+      }
+    }
+
+    // 3. Merge Tatamis by lastUpdated timestamp & assignedBoutIds union
+    const mergedTatamis = (this.state.tatamis || []).map((exTatami, idx) => {
+      const incTatami = incoming.tatamis && (incoming.tatamis.find(t => t.id === exTatami.id) || incoming.tatamis[idx]);
+      if (!incTatami) return exTatami;
+      const exTime = exTatami.lastUpdated || 0;
+      const incTime = incTatami.lastUpdated || 0;
+
+      if (incTime > exTime) {
+        return { ...exTatami, ...incTatami };
+      } else if (exTime > incTime) {
+        return { ...incTatami, ...exTatami };
+      } else {
+        const combinedAssigned = Array.from(new Set([
+          ...(exTatami.assignedBoutIds || []),
+          ...(incTatami.assignedBoutIds || [])
+        ]));
+        return {
+          ...exTatami,
+          ...incTatami,
+          activeBoutId: exTatami.activeBoutId || incTatami.activeBoutId,
+          assignedBoutIds: combinedAssigned
+        };
+      }
+    });
+
+    this.state = {
+      ...this.state,
+      ...incoming,
+      bouts: Array.from(boutMap.values()),
+      brackets: mergedBrackets,
+      tatamis: mergedTatamis,
+      lastUpdated: Math.max(this.state.lastUpdated || 0, incoming.lastUpdated || 0)
+    };
   },
 
   initWebSocketSync() {
@@ -120,10 +211,7 @@ const SyncService = {
         try {
           const cloudData = JSON.parse(event.data);
           if (cloudData && cloudData.bouts && Array.isArray(cloudData.bouts) && cloudData.bouts.length > 0) {
-            if (this.lastLocalEditTime && (Date.now() - this.lastLocalEditTime < 30000)) {
-              return; // Protect active local editing from background socket overwrite
-            }
-            this.state = { ...this.state, ...cloudData };
+            this.mergeState(cloudData);
             localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
             this.notifyListeners();
           }
@@ -144,12 +232,40 @@ const SyncService = {
     }
   },
 
+  async loadTatamiSyncFromAivenDB() {
+    try {
+      if (this.isPushing) return;
+
+      const headers = {};
+      if (this.lastTatamiEtag) {
+        headers['If-None-Match'] = this.lastTatamiEtag;
+      }
+
+      const response = await fetch(this.TATAMI_API_URL, { headers });
+      if (response.status === 304) {
+        return; // Zero payload & zero DOM re-render overhead!
+      }
+
+      if (response.ok) {
+        const etag = response.headers.get('ETag');
+        if (etag) this.lastTatamiEtag = etag;
+        const cloudData = await response.json();
+
+        if (cloudData && cloudData.tatamis && Array.isArray(cloudData.tatamis)) {
+          this.mergeState(cloudData);
+          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
+          this.notifyListeners();
+        }
+      }
+    } catch (err) {
+      // Offline fallback
+    }
+  },
+
   async loadFromAivenDB() {
     try {
-      // Skip pull if local edit happened within last 30 seconds or a push is in-flight
-      if (this.isPushing || (this.lastLocalEditTime && (Date.now() - this.lastLocalEditTime < 30000))) {
-        return;
-      }
+      // Skip pull if push is in-flight
+      if (this.isPushing) return;
 
       const headers = {};
       if (this.lastEtag) {
@@ -184,13 +300,47 @@ const SyncService = {
       }
 
       if (cloudData && cloudData.bouts && Array.isArray(cloudData.bouts) && cloudData.bouts.length > 0) {
-        this.state = { ...this.state, ...cloudData };
+        this.mergeState(cloudData);
         localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
         this.notifyListeners();
       }
     } catch (err) {
       // Offline fallback
     }
+  },
+
+  pushTatamiSyncToAivenDB() {
+    if (!this.state || !this.state.tatamis) return;
+
+    const payload = {
+      tatamis: this.state.tatamis,
+      bouts: (this.state.bouts || []).map(b => ({
+        id: b.id,
+        boutName: b.boutName,
+        tatamiId: b.tatamiId,
+        status: b.status,
+        eventType: b.eventType,
+        ageCategory: b.ageCategory,
+        gender: b.gender,
+        beltTier: b.beltTier,
+        lastUpdated: b.lastUpdated || Date.now()
+      })),
+      lastUpdated: Date.now()
+    };
+
+    setTimeout(async () => {
+      try {
+        const res = await fetch(this.TATAMI_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          const etag = res.headers.get('ETag');
+          if (etag) this.lastTatamiEtag = etag;
+        }
+      } catch (err) {}
+    }, 0);
   },
 
   pushToAivenDB() {
@@ -461,6 +611,7 @@ const SyncService = {
     }
 
     this.saveToLocal();
+    this.pushTatamiSyncToAivenDB();
   },
 
   unassignBoutFromTatami(boutId) {
@@ -495,6 +646,7 @@ const SyncService = {
       bracket.lastUpdated = now;
     }
     this.saveToLocal();
+    this.pushTatamiSyncToAivenDB();
   },
 
   setActiveTatamiMatch(tatamiId, boutId, matchNumber) {
@@ -520,6 +672,7 @@ const SyncService = {
     }
 
     this.saveToLocal();
+    this.pushTatamiSyncToAivenDB();
   },
 
   // Check and update if an entire bout sheet is completed
