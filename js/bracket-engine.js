@@ -683,11 +683,10 @@ const BracketEngine = {
       }
     }
 
-    // Now check if ALL competitors in the bout have been scored AND no tie is pending
-    const allScored = bracket.competitors.length > 0 && bracket.competitors.every(c => c.hasScored);
+    // Populate Gold, Silver, Bronze medals as long as active scored competitors exist and no tie is pending
     const tiePending = bracket.tieBreaker && bracket.tieBreaker.activeTie !== null;
 
-    if (allScored && !tiePending) {
+    if (activeScored.length > 0 && !tiePending) {
       // Assign Medals based on final places
       bracket.competitors.forEach(c => {
         if (c.place === 1) bracket.medals.gold = c;
@@ -702,16 +701,14 @@ const BracketEngine = {
 
       // Fallback dual bronze if unassigned
       if (!bracket.medals.bronze1 && activeScored.length >= 3) {
-        bracket.medals.bronze1 = activeScored[2] || null;
+        bracket.medals.bronze1 = activeScored.find(c => c.place === 3) || activeScored[2] || null;
       }
       if (!bracket.medals.bronze2 && activeScored.length >= 4) {
-        bracket.medals.bronze2 = activeScored[3] || null;
+        bracket.medals.bronze2 = activeScored.find(c => c.place === 4) || activeScored[3] || null;
       }
     } else {
-      // Keep medals uncalculated / hidden until ALL competitors are scored AND tie is resolved!
       bracket.medals = { gold: null, silver: null, bronze1: null, bronze2: null };
-      if (!allScored || tiePending) {
-        // Clear places while bout is in progress or tie is pending
+      if (tiePending) {
         bracket.competitors.forEach(c => c.place = null);
       }
     }

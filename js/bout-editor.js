@@ -678,6 +678,10 @@ const BoutEditor = {
       (tieBreaker.flagVote ? '2WAY_FLAG' : null)
     );
 
+    if (activeTie) {
+      SyncService.startBoutScoring(bracket.boutId);
+    }
+
     // 2-Way Flag Vote UI ONLY
     let flagVoteCardHTML = '';
     if (activeTie === '2WAY_FLAG' && tieBreaker.flagVote && !tieBreaker.flagVote.winnerId) {
@@ -765,6 +769,13 @@ const BoutEditor = {
               `).join('')}
             </tbody>
           </table>
+          ${canScoreKata ? `
+            <div class="text-end mt-2 pt-2 border-top">
+              <button class="btn btn-danger btn-sm fw-bold px-3 shadow-sm" onclick="BoutEditor.finishKataRescoreRound('${bracket.boutId}')">
+                🏁 Calculate & Finish Re-Score Round
+              </button>
+            </div>
+          ` : ''}
         </div>
       `;
     }
@@ -1019,9 +1030,13 @@ const BoutEditor = {
     if (!bracket || bracket.eventType !== 'Kata' || !bracket.tieBreaker.flagVote) return;
 
     bracket.tieBreaker.flagVote.winnerId = winnerId;
+    SyncService.lastLocalEditTime = Date.now();
     BracketEngine.recalculateKataRanks(bracket);
     SyncService.checkBoutCompletion(boutId);
-    SyncService.saveToLocalOnly();
+    SyncService.saveToLocal();
+    SyncService.pushToAivenDB();
+    SyncService.stopBoutScoring();
+
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
     const ringContainer = document.getElementById('ringBoutContainer');
     if (ringContainer) {
@@ -1030,7 +1045,7 @@ const BoutEditor = {
   },
 
   onKataRescoreFocus(boutId, compId, refIndex) {
-    SyncService.lastLocalEditTime = Date.now();
+    SyncService.startBoutScoring(boutId);
     const bracket = SyncService.state.brackets[boutId];
     if (!bracket || bracket.eventType !== 'Kata' || !bracket.tieBreaker || !bracket.tieBreaker.rescoreRound) return;
 
@@ -1055,7 +1070,7 @@ const BoutEditor = {
   },
 
   updateKataRescore(boutId, compId, refIndex, val) {
-    SyncService.lastLocalEditTime = Date.now();
+    SyncService.startBoutScoring(boutId);
     const bracket = SyncService.state.brackets[boutId];
     if (!bracket || bracket.eventType !== 'Kata' || !bracket.tieBreaker || !bracket.tieBreaker.rescoreRound) return;
 
@@ -1089,6 +1104,48 @@ const BoutEditor = {
       }
     } else {
       this.updateKataDOM(boutId);
+    }
+  },
+
+  finishKataRescoreRound(boutId) {
+    const bracket = SyncService.state.brackets[boutId];
+    if (!bracket || bracket.eventType !== 'Kata' || !bracket.tieBreaker || !bracket.tieBreaker.rescoreRound) return;
+
+    if (Array.isArray(bracket.tieBreaker.rescoreRound.competitors)) {
+      bracket.tieBreaker.rescoreRound.competitors.forEach(rc => {
+        if (!Array.isArray(rc.scores) || rc.scores.length !== 5) {
+          rc.scores = [5.0, 5.0, 5.0, 5.0, 5.0];
+        }
+        if (!Array.isArray(rc.refereeTouched) || rc.refereeTouched.length !== 5) {
+          rc.refereeTouched = [false, false, false, false, false];
+        }
+
+        [0, 1, 2, 3, 4].forEach(refIdx => {
+          const inputEl = document.getElementById(`kataRescoreInput_${boutId}_${rc.id}_${refIdx}`);
+          if (inputEl) {
+            const val = inputEl.value;
+            if (val !== '' || inputEl.dataset.touched === 'true') {
+              const num = parseFloat(val);
+              rc.scores[refIdx] = isNaN(num) ? 5.0 : num;
+              rc.refereeTouched[refIdx] = true;
+            }
+          }
+        });
+        rc.hasScored = rc.refereeTouched.some(t => t);
+      });
+    }
+
+    SyncService.lastLocalEditTime = Date.now();
+    BracketEngine.recalculateKataRanks(bracket);
+    SyncService.checkBoutCompletion(boutId);
+    SyncService.saveToLocal();
+    SyncService.pushToAivenDB();
+    SyncService.stopBoutScoring();
+
+    this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
+    const ringContainer = document.getElementById('ringBoutContainer');
+    if (ringContainer) {
+      this.renderBoutSheet(boutId, 'ringBoutContainer');
     }
   },
 
