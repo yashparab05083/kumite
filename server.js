@@ -287,31 +287,22 @@ app.get('/api/tournament', (req, res) => {
   }
 });
 
-// 1b. GET /api/sync/tatamis - Lightweight Tatami & Bout assignment sync (<2KB payload)
+// 1b. GET /api/sync/tatamis - Tatami & Bout assignment sync with brackets & participants
 app.get('/api/sync/tatamis', (req, res) => {
   try {
     res.setHeader('Cache-Control', 'no-cache');
     if (!ramCache || !ramCache.tatamis) {
-      return res.json({ tatamis: [], bouts: [], lastUpdated: 0 });
+      return res.json({ tatamis: [], bouts: [], brackets: {}, lastUpdated: 0 });
     }
 
-    const lightState = {
+    const syncState = {
       tatamis: ramCache.tatamis,
-      bouts: (ramCache.bouts || []).map(b => ({
-        id: b.id,
-        boutName: b.boutName,
-        tatamiId: b.tatamiId,
-        status: b.status,
-        eventType: b.eventType,
-        ageCategory: b.ageCategory,
-        gender: b.gender,
-        beltTier: b.beltTier,
-        lastUpdated: b.lastUpdated || 0
-      })),
+      bouts: ramCache.bouts || [],
+      brackets: ramCache.brackets || {},
       lastUpdated: ramCache.lastUpdated || 0
     };
 
-    const hash = crypto.createHash('md5').update(JSON.stringify(lightState)).digest('hex').substring(0, 12);
+    const hash = crypto.createHash('md5').update(JSON.stringify(syncState)).digest('hex').substring(0, 12);
     const lightEtag = `"tatami-v${stateVersion}-${hash}"`;
     res.setHeader('ETag', lightEtag);
 
@@ -319,7 +310,7 @@ app.get('/api/sync/tatamis', (req, res) => {
       return res.status(304).end();
     }
 
-    return res.json(lightState);
+    return res.json(syncState);
   } catch (err) {
     console.error('Fetch tatami sync API error:', err.message);
     res.status(500).json({ error: err.message });
@@ -362,7 +353,7 @@ function mergeTournamentState(existing, incoming) {
     }
   }
 
-  // 2. Merge bouts by lastUpdated timestamp
+  // 2. Merge bouts by lastUpdated timestamp (preserving participants)
   const boutMap = new Map();
   if (Array.isArray(existing.bouts)) {
     existing.bouts.forEach(b => boutMap.set(b.id, b));
@@ -375,7 +366,10 @@ function mergeTournamentState(existing, incoming) {
       } else {
         const exTime = exBout.lastUpdated || 0;
         const incTime = incBout.lastUpdated || 0;
-        boutMap.set(incBout.id, incTime >= exTime ? incBout : exBout);
+        const mergedParts = (incBout.participants && incBout.participants.length > 0) ? incBout.participants : (exBout.participants || []);
+        const chosenBout = incTime >= exTime ? { ...exBout, ...incBout } : { ...incBout, ...exBout };
+        chosenBout.participants = mergedParts;
+        boutMap.set(incBout.id, chosenBout);
       }
     });
   }

@@ -119,7 +119,7 @@ const SyncService = {
       return;
     }
 
-    // 1. Merge bouts by lastUpdated timestamp
+    // 1. Merge bouts by lastUpdated timestamp (preserving participants)
     const boutMap = new Map();
     if (Array.isArray(this.state.bouts)) {
       this.state.bouts.forEach(b => boutMap.set(b.id, b));
@@ -133,11 +133,10 @@ const SyncService = {
         } else {
           const exTime = exBout.lastUpdated || 0;
           const incTime = incBout.lastUpdated || 0;
-          if (incTime >= exTime) {
-            boutMap.set(incBout.id, { ...exBout, ...incBout });
-          } else {
-            boutMap.set(incBout.id, { ...incBout, ...exBout });
-          }
+          const mergedParts = (incBout.participants && incBout.participants.length > 0) ? incBout.participants : (exBout.participants || []);
+          const chosenBout = incTime >= exTime ? { ...exBout, ...incBout } : { ...incBout, ...exBout };
+          chosenBout.participants = mergedParts;
+          boutMap.set(incBout.id, chosenBout);
         }
       });
     }
@@ -338,17 +337,8 @@ const SyncService = {
 
     const payload = {
       tatamis: this.state.tatamis,
-      bouts: (this.state.bouts || []).map(b => ({
-        id: b.id,
-        boutName: b.boutName,
-        tatamiId: b.tatamiId,
-        status: b.status,
-        eventType: b.eventType,
-        ageCategory: b.ageCategory,
-        gender: b.gender,
-        beltTier: b.beltTier,
-        lastUpdated: b.lastUpdated || Date.now()
-      })),
+      bouts: this.state.bouts || [],
+      brackets: this.state.brackets || {},
       lastUpdated: Date.now()
     };
 
