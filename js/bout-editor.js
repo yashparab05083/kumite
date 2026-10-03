@@ -21,30 +21,9 @@ const BoutEditor = {
     this.isEditMode = !this.isEditMode;
     SyncService.isEditingActive = this.isEditMode;
 
-    if (!this.isEditMode) {
-      // Exiting Edit Mode -> Trigger single DB update and sync to all Tatamis!
-      const now = Date.now();
-      if (this.activeBoutId) {
-        const bracket = SyncService.state.brackets[this.activeBoutId];
-        if (bracket) bracket.lastUpdated = now;
-        const bout = (SyncService.state.bouts || []).find(b => b.id === this.activeBoutId);
-        if (bout) bout.lastUpdated = now;
-      }
-      SyncService.state.lastUpdated = now;
-
-      // Save locally and push to Aiven Cloud DB & WebSocket clients
-      SyncService.saveToLocal();
-      SyncService.pushTatamiSyncToAivenDB();
-
-      const statusEl = document.getElementById(`submitBoutStatus_${this.activeBoutId}`);
-      if (statusEl) {
-        statusEl.className = 'alert alert-info alert-dismissible fade show my-2 py-2 fs-7 print-hide shadow-sm';
-        statusEl.innerHTML = `
-          <strong>✅ Exit Edit Mode:</strong> All bout sheet changes have been saved to DB and synced to Tatami rings!
-          <button type="button" class="btn-close py-2" data-bs-dismiss="alert"></button>
-        `;
-        statusEl.style.display = 'block';
-      }
+    if (!this.isEditMode && this.activeBoutId) {
+      this.submitEditedChanges(this.activeBoutId);
+      return;
     }
 
     if (this.activeBoutId) {
@@ -249,6 +228,9 @@ const BoutEditor = {
             <button class="btn btn-sm ${this.isEditMode ? 'btn-warning text-dark fw-bold' : 'btn-outline-dark'}" onclick="BoutEditor.toggleEditMode()">
               ${this.isEditMode ? '✏️ Exit Edit Mode' : '✏️ Enable Edit & Reassign Mode'}
             </button>
+            <button id="submitChangesBtn_${boutId}" class="btn btn-sm btn-success fw-bold px-3 shadow-sm" onclick="BoutEditor.submitEditedChanges('${boutId}')">
+              💾 Submit Changes to DB & Tatamis
+            </button>
             ${this.isEditMode ? `
               <button class="btn btn-sm btn-success" onclick="${bracket.eventType === 'Kata' ? `BoutEditor.openAddKataCompetitorModal('${boutId}')` : `BoutEditor.openAddParticipantModal('${boutId}')`}">➕ Add Late Entry</button>
               ${bracket.eventType !== 'Kata' ? `<button class="btn btn-sm btn-info text-white" onclick="BoutEditor.openQuickSwapModal('${boutId}')">🔀 Quick Swap Slots</button>` : ''}
@@ -343,6 +325,54 @@ const BoutEditor = {
     SyncService.stopBoutScoring();
 
     // 4. Re-render bout sheet
+    this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
+    const ringContainer = document.getElementById('ringBoutContainer');
+    if (ringContainer) {
+      this.renderBoutSheet(boutId, 'ringBoutContainer');
+    }
+  },
+
+  async submitEditedChanges(boutId) {
+    const bracket = SyncService.state.brackets[boutId];
+    const bout = (SyncService.state.bouts || []).find(b => b.id === boutId);
+    if (!bracket && !bout) return alert('Bout sheet not found!');
+
+    const btn = document.getElementById(`submitChangesBtn_${boutId}`);
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '⏳ Submitting Changes...';
+    }
+
+    const now = Date.now();
+    if (bracket) bracket.lastUpdated = now;
+    if (bout) bout.lastUpdated = now;
+    if (SyncService.state.tatamis) {
+      SyncService.state.tatamis.forEach(t => t.lastUpdated = now);
+    }
+    SyncService.state.lastUpdated = now;
+
+    // Save to local storage & push to Aiven DB & broadcast via WebSocket to Tatami rings
+    SyncService.saveToLocal();
+    SyncService.pushTatamiSyncToAivenDB();
+
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '💾 Submit Changes to DB & Tatamis';
+    }
+
+    const statusEl = document.getElementById(`submitBoutStatus_${boutId}`);
+    if (statusEl) {
+      statusEl.className = 'alert alert-success alert-dismissible fade show my-2 py-2 fs-7 print-hide shadow-sm';
+      statusEl.innerHTML = `
+        <strong>✅ Changes Submitted Successfully!</strong> All edits to "${bout ? bout.boutName : 'Bout'}" have been stored in the database and updated across all Tatami rings live.
+        <button type="button" class="btn-close py-2" data-bs-dismiss="alert"></button>
+      `;
+      statusEl.style.display = 'block';
+    } else {
+      alert(`✅ Changes submitted to database and updated across Tatami rings successfully!`);
+    }
+
+    // Re-render bout sheet
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
     const ringContainer = document.getElementById('ringBoutContainer');
     if (ringContainer) {
