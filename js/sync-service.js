@@ -127,12 +127,42 @@ const SyncService = {
 
   mergeState(incoming) {
     if (!incoming) return;
+    const localUser = this.state ? this.state.currentUser : null;
     if (!this.state || !this.state.bouts || this.state.bouts.length === 0) {
-      this.state = { ...this.state, ...incoming };
+      this.state = { ...this.state, ...incoming, currentUser: localUser };
       return;
     }
 
-    // 1. Merge bouts by lastUpdated timestamp (preserving participants)
+    // 1. Merge brackets by lastUpdated timestamp (track which side won per bout)
+    const mergedBrackets = { ...(this.state.brackets || {}) };
+    const incomingBracketWon = new Set();
+    if (incoming.brackets) {
+      for (const [boutId, incBr] of Object.entries(incoming.brackets)) {
+        const exBr = mergedBrackets[boutId];
+        if (!exBr) {
+          mergedBrackets[boutId] = incBr;
+          incomingBracketWon.add(boutId);
+        } else {
+          const exTime = exBr.lastUpdated || 0;
+          const incTime = incBr.lastUpdated || 0;
+          if (incTime >= exTime) {
+            mergedBrackets[boutId] = incBr;
+            incomingBracketWon.add(boutId);
+          } else {
+            const incDone = (incBr.matches || []).filter(m => m.status === 'Completed').length;
+            const exDone = (exBr.matches || []).filter(m => m.status === 'Completed').length;
+            if (incDone > exDone) {
+              mergedBrackets[boutId] = incBr;
+              incomingBracketWon.add(boutId);
+            }
+          }
+        }
+      }
+    }
+
+    // 2. Merge bouts by lastUpdated timestamp.
+    // Participants ALWAYS follow the side whose bracket won, so a stale device that
+    // bumps bout.lastUpdated (status change, opening a sheet) can't revert player moves.
     const boutMap = new Map();
     if (Array.isArray(this.state.bouts)) {
       this.state.bouts.forEach(b => boutMap.set(b.id, b));
@@ -147,63 +177,36 @@ const SyncService = {
           const exTime = exBout.lastUpdated || 0;
           const incTime = incBout.lastUpdated || 0;
           const chosenBout = incTime >= exTime ? { ...exBout, ...incBout } : { ...incBout, ...exBout };
-          if (incTime >= exTime && incBout.participants) {
-            chosenBout.participants = incBout.participants;
-          } else if (exBout.participants) {
-            chosenBout.participants = exBout.participants;
+          const participantSource = incomingBracketWon.has(incBout.id) ? incBout : exBout;
+          if (participantSource.participants) {
+            chosenBout.participants = participantSource.participants;
           }
           boutMap.set(incBout.id, chosenBout);
         }
       });
     }
 
-    // 2. Merge brackets by lastUpdated timestamp
-    const mergedBrackets = { ...(this.state.brackets || {}) };
-    if (incoming.brackets) {
-      for (const [boutId, incBr] of Object.entries(incoming.brackets)) {
-        const exBr = mergedBrackets[boutId];
-        if (!exBr) {
-          mergedBrackets[boutId] = incBr;
+    // 3. Merge Tatamis by lastUpdated timestamp
+    let mergedTatamis = [];
+    if (!this.state.tatamis || this.state.tatamis.length === 0) {
+      mergedTatamis = incoming.tatamis || [];
+    } else if (!incoming.tatamis || incoming.tatamis.length === 0) {
+      mergedTatamis = this.state.tatamis;
+    } else {
+      const tatamiMap = new Map();
+      this.state.tatamis.forEach(t => tatamiMap.set(t.id, t));
+      incoming.tatamis.forEach(incTatami => {
+        const exTatami = tatamiMap.get(incTatami.id);
+        if (!exTatami) {
+          tatamiMap.set(incTatami.id, incTatami);
         } else {
-          const exTime = exBr.lastUpdated || 0;
-          const incTime = incBr.lastUpdated || 0;
-          if (incTime >= exTime) {
-            mergedBrackets[boutId] = incBr;
-          } else {
-            const incDone = (incBr.matches || []).filter(m => m.status === 'Completed').length;
-            const exDone = (exBr.matches || []).filter(m => m.status === 'Completed').length;
-            if (incDone > exDone) {
-              mergedBrackets[boutId] = incBr;
-            }
-          }
+          const exTime = exTatami.lastUpdated || 0;
+          const incTime = incTatami.lastUpdated || 0;
+          tatamiMap.set(incTatami.id, incTime >= exTime ? incTatami : exTatami);
         }
-      }
+      });
+      mergedTatamis = Array.from(tatamiMap.values()).sort((a, b) => a.id - b.id);
     }
-
-    // 3. Merge Tatamis by lastUpdated timestamp & assignedBoutIds union
-    const mergedTatamis = (this.state.tatamis || []).map((exTatami, idx) => {
-      const incTatami = incoming.tatamis && (incoming.tatamis.find(t => t.id === exTatami.id) || incoming.tatamis[idx]);
-      if (!incTatami) return exTatami;
-      const exTime = exTatami.lastUpdated || 0;
-      const incTime = incTatami.lastUpdated || 0;
-
-      if (incTime > exTime) {
-        return { ...exTatami, ...incTatami };
-      } else if (exTime > incTime) {
-        return { ...incTatami, ...exTatami };
-      } else {
-        const combinedAssigned = Array.from(new Set([
-          ...(exTatami.assignedBoutIds || []),
-          ...(incTatami.assignedBoutIds || [])
-        ]));
-        return {
-          ...exTatami,
-          ...incTatami,
-          activeBoutId: exTatami.activeBoutId || incTatami.activeBoutId,
-          assignedBoutIds: combinedAssigned
-        };
-      }
-    });
 
     this.state = {
       ...this.state,
@@ -211,6 +214,7 @@ const SyncService = {
       bouts: Array.from(boutMap.values()),
       brackets: mergedBrackets,
       tatamis: mergedTatamis,
+      currentUser: localUser,
       lastUpdated: Math.max(this.state.lastUpdated || 0, incoming.lastUpdated || 0)
     };
   },
@@ -364,7 +368,7 @@ const SyncService = {
       tatamis: this.state.tatamis,
       bouts: this.state.bouts || [],
       brackets: this.state.brackets || {},
-      lastUpdated: Date.now()
+      lastUpdated: this.state.lastUpdated || Date.now()
     };
 
     setTimeout(async () => {
@@ -455,6 +459,13 @@ const SyncService = {
     const activeEl = document.activeElement;
     const isTyping = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA') && document.hasFocus();
     if (isTyping && this.isScoringActive) {
+      // Don't drop the update - retry once the user stops typing
+      if (!this._pendingNotify) {
+        this._pendingNotify = setTimeout(() => {
+          this._pendingNotify = null;
+          this.notifyListeners();
+        }, 1500);
+      }
       return;
     }
     this.listeners.forEach(cb => {
@@ -512,13 +523,25 @@ const SyncService = {
   async submitBoutToServer(boutId) {
     try {
       this.checkBoutCompletion(boutId);
+      const safeTime = Math.max(Date.now(), (this.state.lastUpdated || 0) + 1000);
       const bout = this.state.bouts.find(b => b.id === boutId);
       if (bout) {
-        bout.lastUpdated = Date.now();
+        bout.lastUpdated = safeTime;
       }
       const bracket = this.state.brackets[boutId];
       if (bracket) {
-        bracket.lastUpdated = Date.now();
+        bracket.lastUpdated = safeTime;
+      }
+
+      if (bout && bout.status === 'Completed') {
+        (this.state.tatamis || []).forEach(tatami => {
+          if (tatami.activeBoutId === boutId) {
+            tatami.activeBoutId = null;
+            tatami.activeMatchNumber = null;
+            tatami.status = 'Empty';
+            tatami.lastUpdated = safeTime;
+          }
+        });
       }
 
       this.stopBoutScoring();
@@ -622,11 +645,11 @@ const SyncService = {
   },
 
   setBoutsAndBrackets(bouts, brackets) {
-    const now = Date.now();
-    this.state.bouts = bouts.map(b => ({ ...b, lastUpdated: now }));
+    const safeTime = Math.max(Date.now(), (this.state.lastUpdated || 0) + 1000);
+    this.state.bouts = bouts.map(b => ({ ...b, lastUpdated: safeTime }));
     this.state.brackets = {};
     for (const [k, v] of Object.entries(brackets)) {
-      this.state.brackets[k] = { ...v, lastUpdated: now };
+      this.state.brackets[k] = { ...v, lastUpdated: safeTime };
     }
     if (this.state.tatamis && Array.isArray(this.state.tatamis)) {
       this.state.tatamis.forEach(t => {
@@ -634,7 +657,7 @@ const SyncService = {
         t.activeMatchNumber = null;
         t.assignedBoutIds = [];
         t.status = 'Empty';
-        t.lastUpdated = now;
+        t.lastUpdated = safeTime;
       });
     }
     this.saveToLocal();
@@ -644,9 +667,9 @@ const SyncService = {
     if (!this.state.bouts) this.state.bouts = [];
     if (!this.state.brackets) this.state.brackets = {};
 
-    const now = Date.now();
-    bout.lastUpdated = now;
-    bracket.lastUpdated = now;
+    const safeTime = Math.max(Date.now(), (this.state.lastUpdated || 0) + 1000);
+    bout.lastUpdated = safeTime;
+    bracket.lastUpdated = safeTime;
 
     this.state.bouts.push(bout);
     this.state.brackets[bout.id] = bracket;
@@ -658,7 +681,7 @@ const SyncService = {
         if (!tatami.assignedBoutIds.includes(bout.id)) {
           tatami.assignedBoutIds.push(bout.id);
         }
-        tatami.lastUpdated = now;
+        tatami.lastUpdated = safeTime;
       }
     }
 
@@ -668,25 +691,29 @@ const SyncService = {
   assignBoutToTatami(tatamiId, boutId) {
     if (!tatamiId || !boutId) return;
     const numericTatamiId = parseInt(tatamiId, 10);
-    const now = Date.now();
+    const safeTime = Math.max(Date.now(), (this.state.lastUpdated || 0) + 1000);
 
     const tatami = this.state.tatamis.find(t => t.id === numericTatamiId);
     if (!tatami) return;
 
     // Clean up assignment from any previous tatami
     this.state.tatamis.forEach(t => {
+      let changed = false;
       if (t.assignedBoutIds && Array.isArray(t.assignedBoutIds)) {
         const idx = t.assignedBoutIds.indexOf(boutId);
         if (idx !== -1 && t.id !== numericTatamiId) {
           t.assignedBoutIds.splice(idx, 1);
-          t.lastUpdated = now;
+          changed = true;
         }
       }
       if (t.id !== numericTatamiId && t.activeBoutId === boutId) {
         t.activeBoutId = null;
         t.activeMatchNumber = null;
         t.status = 'Empty';
-        t.lastUpdated = now;
+        changed = true;
+      }
+      if (changed) {
+        t.lastUpdated = safeTime;
       }
     });
 
@@ -697,7 +724,7 @@ const SyncService = {
     if (tatami.assignedBoutIds.indexOf(boutId) === -1) {
       tatami.assignedBoutIds.push(boutId);
     }
-    tatami.lastUpdated = now;
+    tatami.lastUpdated = safeTime;
 
     const bout = this.state.bouts.find(b => b.id === boutId);
     if (bout) {
@@ -705,13 +732,13 @@ const SyncService = {
       if (bout.status !== 'Completed') {
         bout.status = 'Assigned';
       }
-      bout.lastUpdated = now;
+      bout.lastUpdated = safeTime;
     }
 
     const bracket = this.state.brackets[boutId];
     if (bracket) {
       bracket.tatamiId = numericTatamiId;
-      bracket.lastUpdated = now;
+      bracket.lastUpdated = safeTime;
     }
 
     this.saveToLocal();
@@ -719,35 +746,41 @@ const SyncService = {
   },
 
   unassignBoutFromTatami(boutId) {
-    const now = Date.now();
+    const safeTime = Math.max(Date.now(), (this.state.lastUpdated || 0) + 1000);
     const bout = this.state.bouts.find(b => b.id === boutId);
     if (bout) {
-      const oldTatamiId = bout.tatamiId;
       bout.tatamiId = null;
       if (bout.status === 'Assigned') {
         bout.status = 'Pending';
       }
-      bout.lastUpdated = now;
-      if (oldTatamiId) {
-        const tatami = this.state.tatamis.find(t => t.id === oldTatamiId);
-        if (tatami) {
-          tatami.lastUpdated = now;
-          if (tatami.assignedBoutIds) {
-            const idx = tatami.assignedBoutIds.indexOf(boutId);
-            if (idx !== -1) tatami.assignedBoutIds.splice(idx, 1);
-          }
-          if (tatami.activeBoutId === boutId) {
-            tatami.activeBoutId = null;
-            tatami.activeMatchNumber = null;
-            tatami.status = 'Empty';
-          }
+      bout.lastUpdated = safeTime;
+    }
+
+    // Clean up across ALL tatamis
+    (this.state.tatamis || []).forEach(tatami => {
+      let changed = false;
+      if (tatami.assignedBoutIds && Array.isArray(tatami.assignedBoutIds)) {
+        const idx = tatami.assignedBoutIds.indexOf(boutId);
+        if (idx !== -1) {
+          tatami.assignedBoutIds.splice(idx, 1);
+          changed = true;
         }
       }
-    }
+      if (tatami.activeBoutId === boutId) {
+        tatami.activeBoutId = null;
+        tatami.activeMatchNumber = null;
+        tatami.status = 'Empty';
+        changed = true;
+      }
+      if (changed) {
+        tatami.lastUpdated = safeTime;
+      }
+    });
+
     const bracket = this.state.brackets[boutId];
     if (bracket) {
       bracket.tatamiId = null;
-      bracket.lastUpdated = now;
+      bracket.lastUpdated = safeTime;
     }
     this.saveToLocal();
     this.pushTatamiSyncToAivenDB();
@@ -758,21 +791,44 @@ const SyncService = {
     const tatami = this.state.tatamis.find(t => t.id === numericTatamiId);
     if (!tatami) return;
 
-    const now = Date.now();
+    const safeTime = Math.max(Date.now(), (this.state.lastUpdated || 0) + 1000);
+
+    // Ensure no other tatami still claims this active match
+    (this.state.tatamis || []).forEach(t => {
+      if (t.id !== numericTatamiId && t.activeBoutId === boutId) {
+        t.activeBoutId = null;
+        t.activeMatchNumber = null;
+        t.status = 'Empty';
+        t.lastUpdated = safeTime;
+      }
+    });
+
+    if (!tatami.assignedBoutIds || !Array.isArray(tatami.assignedBoutIds)) {
+      tatami.assignedBoutIds = [];
+    }
+    if (boutId && tatami.assignedBoutIds.indexOf(boutId) === -1) {
+      tatami.assignedBoutIds.push(boutId);
+    }
+
     tatami.activeBoutId = boutId;
     tatami.activeMatchNumber = matchNumber;
     tatami.status = boutId ? 'Active' : 'Empty';
-    tatami.lastUpdated = now;
+    tatami.lastUpdated = safeTime;
 
     const bout = this.state.bouts.find(b => b.id === boutId);
-    if (bout && bout.status !== 'Completed') {
-      bout.status = 'In Progress';
-      bout.lastUpdated = now;
+    if (bout) {
+      bout.tatamiId = numericTatamiId;
+      if (bout.status !== 'Completed') {
+        bout.status = 'In Progress';
+      }
+      bout.lastUpdated = safeTime;
     }
 
+    // NOTE: Do NOT bump bracket.lastUpdated here. Opening a sheet doesn't change the
+    // bracket contents; bumping it would let a ring's stale copy overwrite admin edits.
     const bracket = this.state.brackets[boutId];
     if (bracket) {
-      bracket.lastUpdated = now;
+      bracket.tatamiId = numericTatamiId;
     }
 
     this.saveToLocal();
@@ -786,6 +842,7 @@ const SyncService = {
     if (!bout || !bracket) return;
 
     const prevStatus = bout.status;
+    const safeTime = Math.max(Date.now(), (this.state.lastUpdated || 0) + 1000, (bout.lastUpdated || 0) + 1000);
 
     if (bracket.eventType === 'Kata') {
       const activeScored = bracket.competitors.filter(c => c.totalScore > 0);
@@ -798,7 +855,7 @@ const SyncService = {
       } else {
         bout.status = activeScored.length > 0 ? 'In Progress' : (bout.tatamiId ? 'Assigned' : 'Pending');
       }
-      if (prevStatus !== bout.status) bout.lastUpdated = Date.now();
+      if (prevStatus !== bout.status) bout.lastUpdated = safeTime;
       return;
     }
 
@@ -812,26 +869,26 @@ const SyncService = {
       bout.status = anyStarted ? 'In Progress' : (bout.tatamiId ? 'Assigned' : 'Pending');
     }
 
-    if (prevStatus !== bout.status) bout.lastUpdated = Date.now();
+    if (prevStatus !== bout.status) bout.lastUpdated = safeTime;
   },
 
   commitMatchResult(boutId, matchNumber, winnerSide, matchScore) {
     const bracket = this.state.brackets[boutId];
     if (!bracket) return;
 
-    const now = Date.now();
+    const safeTime = Math.max(Date.now(), (bracket.lastUpdated || 0) + 1000, (this.state.lastUpdated || 0) + 1000);
     BracketEngine.updateMatchResult(bracket, matchNumber, winnerSide, matchScore);
-    bracket.lastUpdated = now;
+    bracket.lastUpdated = safeTime;
 
     this.checkBoutCompletion(boutId);
 
     const bout = this.state.bouts.find(b => b.id === boutId);
-    if (bout) bout.lastUpdated = now;
+    if (bout) bout.lastUpdated = safeTime;
     const isBoutDone = bout && bout.status === 'Completed';
 
     this.state.tatamis.forEach(tatami => {
       if (tatami.activeBoutId === boutId && tatami.activeMatchNumber === matchNumber) {
-        const nextMatch = bracket.matches.find(m => m.status === 'Scheduled');
+        const nextMatch = bracket.matches ? bracket.matches.find(m => m.status === 'Scheduled') : null;
         if (nextMatch) {
           tatami.activeMatchNumber = nextMatch.matchNumber;
         } else {
@@ -839,7 +896,7 @@ const SyncService = {
           if (isBoutDone) tatami.activeBoutId = null;
         }
         tatami.status = tatami.activeBoutId ? 'Active' : 'Empty';
-        tatami.lastUpdated = now;
+        tatami.lastUpdated = safeTime;
       }
     });
 
@@ -1211,7 +1268,8 @@ const SyncService = {
 
       if (payload.type === 'SYNC_FULL_STATE' && payload.state) {
         if (payload.state.bouts && payload.state.bouts.length > 0) {
-          this.state = { ...this.state, ...payload.state };
+          // Timestamp-aware merge (never blindly overwrite with a stale peer's state)
+          this.mergeState(payload.state);
           localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
           this.notifyListeners();
         }

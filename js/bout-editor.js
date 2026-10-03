@@ -343,13 +343,12 @@ const BoutEditor = {
       btn.innerHTML = '⏳ Submitting Changes...';
     }
 
-    const now = Date.now();
-    if (bracket) bracket.lastUpdated = now;
-    if (bout) bout.lastUpdated = now;
-    if (SyncService.state.tatamis) {
-      SyncService.state.tatamis.forEach(t => t.lastUpdated = now);
-    }
-    SyncService.state.lastUpdated = now;
+    const safeTime = Math.max(Date.now(), (SyncService.state.lastUpdated || 0) + 1000);
+    if (bracket) bracket.lastUpdated = safeTime;
+    if (bout) bout.lastUpdated = safeTime;
+    // Don't bump tatami timestamps here - that would overwrite live ring status
+    // (active bout / match) on other devices with this admin's copy.
+    SyncService.state.lastUpdated = safeTime;
 
     // Save to local storage & push to Aiven DB & broadcast via WebSocket to Tatami rings
     SyncService.saveToLocal();
@@ -557,10 +556,10 @@ const BoutEditor = {
     const bracket = SyncService.state.brackets[boutId];
     if (!bracket) return;
 
-    const now = Date.now();
-    bracket.lastUpdated = now;
+    const safeTime = Math.max(Date.now(), (bracket.lastUpdated || 0) + 1000, (SyncService.state.lastUpdated || 0) + 1000);
+    bracket.lastUpdated = safeTime;
     const bout = (SyncService.state.bouts || []).find(b => b.id === boutId);
-    if (bout) bout.lastUpdated = now;
+    if (bout) bout.lastUpdated = safeTime;
 
     BracketEngine.advanceByeMatch(bracket, matchNumber);
     SyncService.checkBoutCompletion(boutId);
@@ -580,10 +579,10 @@ const BoutEditor = {
     const bracket = SyncService.state.brackets[boutId];
     if (!bracket) return;
 
-    const now = Date.now();
-    bracket.lastUpdated = now;
+    const safeTime = Math.max(Date.now(), (bracket.lastUpdated || 0) + 1000, (SyncService.state.lastUpdated || 0) + 1000);
+    bracket.lastUpdated = safeTime;
     const bout = (SyncService.state.bouts || []).find(b => b.id === boutId);
-    if (bout) bout.lastUpdated = now;
+    if (bout) bout.lastUpdated = safeTime;
 
     BracketEngine.undoMatch(bracket, matchNumber);
     SyncService.checkBoutCompletion(boutId);

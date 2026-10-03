@@ -309,8 +309,8 @@ app.get('/api/tournament', (req, res) => {
   }
 });
 
-// 1b. GET /api/sync/tatamis - Tatami & Bout assignment sync with brackets & participants
-app.get('/api/sync/tatamis', (req, res) => {
+// 1b. GET /api/sync/tatamis & /api/tatami/sync - Tatami & Bout assignment sync with brackets & participants
+const handleGetTatamiSync = (req, res) => {
   try {
     res.setHeader('Cache-Control', 'no-cache');
     if (!ramCache || !ramCache.tatamis) {
@@ -337,7 +337,9 @@ app.get('/api/sync/tatamis', (req, res) => {
     console.error('Fetch tatami sync API error:', err.message);
     res.status(500).json({ error: err.message });
   }
-});
+};
+app.get('/api/sync/tatamis', handleGetTatamiSync);
+app.get('/api/tatami/sync', handleGetTatamiSync);
 
 /**
  * Intelligent Multi-User Timestamp Merge Function
@@ -356,20 +358,26 @@ function mergeTournamentState(existing, incoming) {
 
   // 1. Merge brackets by lastUpdated timestamp (fallback to completed matches count)
   const mergedBrackets = { ...(existing.brackets || {}) };
+  const incomingBracketWon = new Set();
   if (incoming.brackets) {
     for (const [boutId, incBr] of Object.entries(incoming.brackets)) {
       const exBr = mergedBrackets[boutId];
       if (!exBr) {
         mergedBrackets[boutId] = incBr;
+        incomingBracketWon.add(boutId);
       } else {
         const exTime = exBr.lastUpdated || 0;
         const incTime = incBr.lastUpdated || 0;
         if (incTime >= exTime) {
           mergedBrackets[boutId] = incBr;
+          incomingBracketWon.add(boutId);
         } else {
           const incDone = (incBr.matches || []).filter(m => m.status === 'Completed').length;
           const exDone = (exBr.matches || []).filter(m => m.status === 'Completed').length;
-          mergedBrackets[boutId] = incDone > exDone ? incBr : exBr;
+          if (incDone > exDone) {
+            mergedBrackets[boutId] = incBr;
+            incomingBracketWon.add(boutId);
+          }
         }
       }
     }
@@ -389,10 +397,10 @@ function mergeTournamentState(existing, incoming) {
         const exTime = exBout.lastUpdated || 0;
         const incTime = incBout.lastUpdated || 0;
         const chosenBout = incTime >= exTime ? { ...exBout, ...incBout } : { ...incBout, ...exBout };
-        if (incTime >= exTime && incBout.participants) {
-          chosenBout.participants = incBout.participants;
-        } else if (!chosenBout.participants && exBout.participants) {
-          chosenBout.participants = exBout.participants;
+        // Participants follow whichever side's bracket won (prevents stale reverts of player moves)
+        const participantSource = incomingBracketWon.has(incBout.id) ? incBout : exBout;
+        if (participantSource.participants) {
+          chosenBout.participants = participantSource.participants;
         }
         boutMap.set(incBout.id, chosenBout);
       }
@@ -400,13 +408,26 @@ function mergeTournamentState(existing, incoming) {
   }
 
   // 3. Merge tatamis by lastUpdated timestamp
-  const mergedTatamis = (existing.tatamis || []).map((exTatami, idx) => {
-    const incTatami = incoming.tatamis && incoming.tatamis[idx];
-    if (!incTatami) return exTatami;
-    const exTime = exTatami.lastUpdated || 0;
-    const incTime = incTatami.lastUpdated || 0;
-    return incTime >= exTime ? incTatami : exTatami;
-  });
+  let mergedTatamis = [];
+  if (!existing.tatamis || existing.tatamis.length === 0) {
+    mergedTatamis = incoming.tatamis || [];
+  } else if (!incoming.tatamis || incoming.tatamis.length === 0) {
+    mergedTatamis = existing.tatamis;
+  } else {
+    const tatamiMap = new Map();
+    existing.tatamis.forEach(t => tatamiMap.set(t.id, t));
+    incoming.tatamis.forEach(incTatami => {
+      const exTatami = tatamiMap.get(incTatami.id);
+      if (!exTatami) {
+        tatamiMap.set(incTatami.id, incTatami);
+      } else {
+        const exTime = exTatami.lastUpdated || 0;
+        const incTime = incTatami.lastUpdated || 0;
+        tatamiMap.set(incTatami.id, incTime >= exTime ? incTatami : exTatami);
+      }
+    });
+    mergedTatamis = Array.from(tatamiMap.values()).sort((a, b) => a.id - b.id);
+  }
 
   return {
     ...existing,
@@ -414,7 +435,7 @@ function mergeTournamentState(existing, incoming) {
     bouts: Array.from(boutMap.values()),
     brackets: mergedBrackets,
     tatamis: mergedTatamis,
-    lastUpdated: Date.now()
+    lastUpdated: Math.max(Date.now(), existing.lastUpdated || 0, incoming.lastUpdated || 0)
   };
 }
 
@@ -447,8 +468,8 @@ app.post('/api/tournament', (req, res) => {
   }
 });
 
-// 2b. POST /api/sync/tatamis - Fast Tatami & Bout assignment update (<2KB payload)
-app.post('/api/sync/tatamis', (req, res) => {
+// 2b. POST /api/sync/tatamis & /api/tatami/sync - Fast Tatami & Bout assignment update (<2KB payload)
+const handlePostTatamiSync = (req, res) => {
   try {
     const stateData = req.body;
     if (!stateData) return res.status(400).json({ error: 'No state data provided' });
@@ -467,7 +488,9 @@ app.post('/api/sync/tatamis', (req, res) => {
     console.error('Save tatami sync API error:', err.message);
     res.status(500).json({ error: err.message });
   }
-});
+};
+app.post('/api/sync/tatamis', handlePostTatamiSync);
+app.post('/api/tatami/sync', handlePostTatamiSync);
 
 // 3. POST /api/reset - Clear RAM cache, WebSockets, Local File & Cloud Database
 app.post('/api/reset', async (req, res) => {
@@ -523,7 +546,8 @@ if (process.env.RENDER_EXTERNAL_URL) {
 app.use(express.static(path.join(__dirname), {
   maxAge: '1d',
   setHeaders: (res, filePath) => {
-    if (filePath.endsWith('.html')) {
+    // Always revalidate app code so every Tatami tablet runs the latest sync logic
+    if (filePath.endsWith('.html') || filePath.endsWith('.js') || filePath.endsWith('.css') || filePath.endsWith('.json')) {
       res.setHeader('Cache-Control', 'no-cache');
     }
   }
