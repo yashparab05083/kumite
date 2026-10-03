@@ -690,9 +690,12 @@ const BoutEditor = {
   confirmSwapSlot(boutId, slotIndex) {
     const targetSlotIdx = parseInt(document.getElementById('swapTargetSlotSelect').value, 10);
     SyncService.swapBracketSlots(boutId, slotIndex, targetSlotIdx);
+    SyncService.pushTatamiSyncToAivenDB();
 
     bootstrap.Modal.getInstance(document.getElementById('slotEditModal')).hide();
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
+    const ringContainer = document.getElementById('ringBoutContainer');
+    if (ringContainer) this.renderBoutSheet(boutId, 'ringBoutContainer');
   },
 
   confirmMoveBout(sourceBoutId, sourceSlotIdx) {
@@ -700,9 +703,12 @@ const BoutEditor = {
     const targetSlotIdx = parseInt(document.getElementById('moveTargetSlotSelect').value, 10);
 
     SyncService.moveParticipantToBout(sourceBoutId, sourceSlotIdx, targetBoutId, targetSlotIdx);
+    SyncService.pushTatamiSyncToAivenDB();
 
     bootstrap.Modal.getInstance(document.getElementById('slotEditModal')).hide();
     this.renderBoutSheet(sourceBoutId, 'activeBoutDiagramContainer');
+    const ringContainer = document.getElementById('ringBoutContainer');
+    if (ringContainer) this.renderBoutSheet(sourceBoutId, 'ringBoutContainer');
   },
 
   confirmSaveParticipant(boutId, slotIndex) {
@@ -712,18 +718,24 @@ const BoutEditor = {
     if (!name) return alert('Participant name is required!');
 
     SyncService.updateSlotParticipant(boutId, slotIndex, { name, branch });
+    SyncService.pushTatamiSyncToAivenDB();
 
     bootstrap.Modal.getInstance(document.getElementById('slotEditModal')).hide();
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
+    const ringContainer = document.getElementById('ringBoutContainer');
+    if (ringContainer) this.renderBoutSheet(boutId, 'ringBoutContainer');
   },
 
   confirmRemoveParticipant(boutId, slotIndex) {
     if (!confirm('Are you sure you want to remove this participant and clear this slot to BYE?')) return;
 
     SyncService.updateSlotParticipant(boutId, slotIndex, null);
+    SyncService.pushTatamiSyncToAivenDB();
 
     bootstrap.Modal.getInstance(document.getElementById('slotEditModal')).hide();
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
+    const ringContainer = document.getElementById('ringBoutContainer');
+    if (ringContainer) this.renderBoutSheet(boutId, 'ringBoutContainer');
   },
 
   openQuickSwapModal(boutId) {
@@ -1380,12 +1392,11 @@ const BoutEditor = {
     if (bout) bout.lastUpdated = now;
 
     bootstrap.Modal.getInstance(document.getElementById('kataCompetitorModal')).hide();
-    if (this.isEditMode) {
-      SyncService.saveToLocalOnly();
-    } else {
-      SyncService.saveToLocal();
-    }
+    SyncService.saveToLocal();
+    SyncService.pushTatamiSyncToAivenDB();
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
+    const ringContainer = document.getElementById('ringBoutContainer');
+    if (ringContainer) this.renderBoutSheet(boutId, 'ringBoutContainer');
   },
 
   confirmSwapKataPosition(boutId, sourceIdx) {
@@ -1409,12 +1420,11 @@ const BoutEditor = {
 
     BracketEngine.recalculateKataRanks(bracket);
     bootstrap.Modal.getInstance(document.getElementById('kataCompetitorModal')).hide();
-    if (this.isEditMode) {
-      SyncService.saveToLocalOnly();
-    } else {
-      SyncService.saveToLocal();
-    }
+    SyncService.saveToLocal();
+    SyncService.pushTatamiSyncToAivenDB();
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
+    const ringContainer = document.getElementById('ringBoutContainer');
+    if (ringContainer) this.renderBoutSheet(boutId, 'ringBoutContainer');
   },
 
   confirmMoveKataCompetitor(sourceBoutId, compId) {
@@ -1446,12 +1456,11 @@ const BoutEditor = {
     if (targetBout) targetBout.lastUpdated = now;
 
     bootstrap.Modal.getInstance(document.getElementById('kataCompetitorModal')).hide();
-    if (this.isEditMode) {
-      SyncService.saveToLocalOnly();
-    } else {
-      SyncService.saveToLocal();
-    }
+    SyncService.saveToLocal();
+    SyncService.pushTatamiSyncToAivenDB();
     this.renderBoutSheet(sourceBoutId, 'activeBoutDiagramContainer');
+    const ringContainer = document.getElementById('ringBoutContainer');
+    if (ringContainer) this.renderBoutSheet(sourceBoutId, 'ringBoutContainer');
   },
 
   confirmRemoveKataCompetitor(boutId, compId) {
@@ -1473,12 +1482,11 @@ const BoutEditor = {
     if (bout) bout.lastUpdated = now;
 
     bootstrap.Modal.getInstance(document.getElementById('kataCompetitorModal')).hide();
-    if (this.isEditMode) {
-      SyncService.saveToLocalOnly();
-    } else {
-      SyncService.saveToLocal();
-    }
+    SyncService.saveToLocal();
+    SyncService.pushTatamiSyncToAivenDB();
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
+    const ringContainer = document.getElementById('ringBoutContainer');
+    if (ringContainer) this.renderBoutSheet(boutId, 'ringBoutContainer');
   },
 
   confirmAddKataCompetitor(boutId) {
@@ -1511,12 +1519,11 @@ const BoutEditor = {
     if (bout) bout.lastUpdated = now;
 
     bootstrap.Modal.getInstance(document.getElementById('addKataCompetitorModal')).hide();
-    if (this.isEditMode) {
-      SyncService.saveToLocalOnly();
-    } else {
-      SyncService.saveToLocal();
-    }
+    SyncService.saveToLocal();
+    SyncService.pushTatamiSyncToAivenDB();
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
+    const ringContainer = document.getElementById('ringBoutContainer');
+    if (ringContainer) this.renderBoutSheet(boutId, 'ringBoutContainer');
   },
 
   openCreateBoutModal() {

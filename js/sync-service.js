@@ -436,7 +436,7 @@ const SyncService = {
   },
 
   notifyListeners() {
-    if (this.isScoringActive || this.isEditingActive) return; // Prevent background re-rendering while user is actively entering scores or editing
+    if (this.isScoringActive) return; // Prevent background re-rendering while user is actively entering scores
     this.listeners.forEach(cb => cb(this.state));
   },
 
@@ -785,12 +785,7 @@ const SyncService = {
 
     this.rebuildRound1Matches(bracket);
     this.checkBoutCompletion(boutId);
-
-    if (this.isEditingActive) {
-      this.saveToLocalOnly();
-    } else {
-      this.saveToLocal();
-    }
+    this.saveToLocal();
   },
 
   updateSlotParticipant(boutId, slotIndex, participantData) {
@@ -821,12 +816,7 @@ const SyncService = {
 
     this.rebuildRound1Matches(bracket);
     this.checkBoutCompletion(boutId);
-
-    if (this.isEditingActive) {
-      this.saveToLocalOnly();
-    } else {
-      this.saveToLocal();
-    }
+    this.saveToLocal();
   },
 
   moveParticipantToBout(sourceBoutId, sourceSlotIdx, targetBoutId, targetSlotIdx) {
@@ -854,12 +844,7 @@ const SyncService = {
     this.rebuildRound1Matches(targetBracket);
     this.checkBoutCompletion(sourceBoutId);
     this.checkBoutCompletion(targetBoutId);
-
-    if (this.isEditingActive) {
-      this.saveToLocalOnly();
-    } else {
-      this.saveToLocal();
-    }
+    this.saveToLocal();
   },
 
   rebuildRound1Matches(bracket) {
