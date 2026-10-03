@@ -264,28 +264,6 @@ wss.on('connection', (ws) => {
       ws.send(JSON.stringify(ramCache));
     } catch (e) {}
   }
-
-  ws.on('message', (message) => {
-    try {
-      if (!message) return;
-      const str = message.toString('utf8');
-      if (str === 'PING') {
-        try { ws.send('PONG'); } catch(e) {}
-        return;
-      }
-      const incoming = JSON.parse(str);
-      if (incoming && typeof incoming === 'object') {
-        ramCache = mergeTournamentState(ramCache, incoming);
-        updateEtag();
-        const jsonStr = JSON.stringify(ramCache);
-        broadcastToClients(jsonStr);
-        scheduleFileSave(jsonStr);
-        if (isDbConnected) scheduleDbSave(ramCache);
-      }
-    } catch (err) {
-      console.warn('WS incoming message error:', err.message);
-    }
-  });
 });
 
 // 1. GET /api/tournament - Instant RAM read with ETag support (<1ms)

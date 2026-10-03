@@ -36,8 +36,6 @@ const SyncService = {
   TATAMI_API_URL: '/api/sync/tatamis',
   GITHUB_RAW_URL: 'https://raw.githubusercontent.com/yashparab05083/kumite/main/tournament_data.json',
 
-  syncChannel: (typeof BroadcastChannel !== 'undefined') ? new BroadcastChannel('kumite_sync_channel') : null,
-  ws: null,
   lastTatamiEtag: null,
 
   isScoringActive: false,
@@ -69,17 +67,6 @@ const SyncService = {
     this.loadFromAivenDB();
     this.loadTatamiSyncFromAivenDB();
     this.initWebSocketSync();
-
-    // Listen for cross-tab BroadcastChannel sync on same browser
-    if (this.syncChannel) {
-      this.syncChannel.onmessage = (event) => {
-        if (event.data && event.data.state && !this.isEditingActive) {
-          this.mergeState(event.data.state);
-          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
-          this.notifyListeners();
-        }
-      };
-    }
     
     // Auto-restore room code if previously connected
     const savedRoom = localStorage.getItem('kumite_active_room_code');
@@ -215,7 +202,6 @@ const SyncService = {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${window.location.host}/ws`;
       const ws = new WebSocket(wsUrl);
-      this.ws = ws;
 
       ws.onmessage = (event) => {
         if (!event.data) return;
@@ -248,7 +234,7 @@ const SyncService = {
         }
         try {
           const cloudData = JSON.parse(event.data);
-          if (cloudData && (cloudData.bouts || cloudData.tatamis || cloudData.brackets)) {
+          if (cloudData && cloudData.bouts && Array.isArray(cloudData.bouts) && cloudData.bouts.length > 0) {
             this.mergeState(cloudData);
             localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
             this.notifyListeners();
@@ -259,7 +245,6 @@ const SyncService = {
       };
 
       ws.onclose = () => {
-        this.ws = null;
         setTimeout(() => this.initWebSocketSync(), 3000);
       };
 
@@ -525,73 +510,37 @@ const SyncService = {
     }
   },
 
-  forcePushToDBAndTatamis() {
-    if (!this.state || !this.state.bouts) return;
-
-    const now = Date.now();
-    this.state.lastUpdated = now;
-    this.lastLocalEditTime = now;
-
-    // 1. Instant local storage update & UI notification
-    const serialized = JSON.stringify(this.state);
-    localStorage.setItem(this.STORAGE_KEY, serialized);
-    if (this.state.bouts && this.state.bouts.length > 0) {
-      localStorage.setItem('kumite_backup_snapshot', serialized);
-    }
-    this.notifyListeners();
-
-    // 2. Instant BroadcastChannel post (same machine, across all open browser tabs)
-    if (this.syncChannel) {
-      try {
-        this.syncChannel.postMessage({ type: 'FORCE_UPDATE', state: this.state, timestamp: now });
-      } catch (e) {}
-    }
-
-    // 3. Instant direct WebSocket send to server (relays to all connected devices in <1ms)
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      try {
-        this.ws.send(serialized);
-      } catch (e) {}
-    }
-
-    // 4. Instant HTTP POST pushes without 500ms debounce
-    fetch(this.AIVEN_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: serialized
-    }).catch(() => {});
-
-    const tatamiPayload = {
-      tatamis: this.state.tatamis,
-      bouts: (this.state.bouts || []).map(b => ({
-        id: b.id,
-        boutName: b.boutName,
-        tatamiId: b.tatamiId,
-        status: b.status,
-        eventType: b.eventType,
-        ageCategory: b.ageCategory,
-        gender: b.gender,
-        beltTier: b.beltTier,
-        lastUpdated: b.lastUpdated || now
-      })),
-      lastUpdated: now
-    };
-
-    fetch(this.TATAMI_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(tatamiPayload)
-    }).catch(() => {});
-
-    if (typeof FirebaseConfig !== 'undefined' && FirebaseConfig.isInitialized && FirebaseConfig.db) {
-      try {
-        FirebaseConfig.db.ref('kumite_tournament_data_v1').set(this.state).catch(() => {});
-      } catch (e) {}
-    }
-  },
-
   saveToLocal() {
-    this.forcePushToDBAndTatamis();
+    try {
+      this.state.lastUpdated = Date.now();
+      this.lastLocalEditTime = Date.now();
+
+      const serialized = JSON.stringify(this.state);
+      localStorage.setItem(this.STORAGE_KEY, serialized);
+      // Secondary auto-backup snapshot safeguard
+      if (this.state.bouts && this.state.bouts.length > 0) {
+        localStorage.setItem('kumite_backup_snapshot', serialized);
+      }
+
+      // Notify UI listeners immediately for instant UI responsiveness
+      this.notifyListeners();
+
+      // Dispatch network pushes asynchronously to prevent UI thread blocking
+      setTimeout(() => {
+        this.broadcastStateToPeers();
+        this.pushToAivenDB();
+
+        if (typeof FirebaseConfig !== 'undefined' && FirebaseConfig.isInitialized && FirebaseConfig.db) {
+          try {
+            FirebaseConfig.db.ref('kumite_tournament_data_v1').set(this.state).catch(err => {
+              console.warn('Firebase cloud sync push error:', err);
+            });
+          } catch (e) {}
+        }
+      }, 0);
+    } catch (e) {
+      console.error('Failed to save local state:', e);
+    }
   },
 
   setBoutsAndBrackets(bouts, brackets) {
