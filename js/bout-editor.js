@@ -19,6 +19,34 @@ const BoutEditor = {
 
   toggleEditMode() {
     this.isEditMode = !this.isEditMode;
+    SyncService.isEditingActive = this.isEditMode;
+
+    if (!this.isEditMode) {
+      // Exiting Edit Mode -> Trigger single DB update and sync to all Tatamis!
+      const now = Date.now();
+      if (this.activeBoutId) {
+        const bracket = SyncService.state.brackets[this.activeBoutId];
+        if (bracket) bracket.lastUpdated = now;
+        const bout = (SyncService.state.bouts || []).find(b => b.id === this.activeBoutId);
+        if (bout) bout.lastUpdated = now;
+      }
+      SyncService.state.lastUpdated = now;
+
+      // Save locally and push to Aiven Cloud DB & WebSocket clients
+      SyncService.saveToLocal();
+      SyncService.pushTatamiSyncToAivenDB();
+
+      const statusEl = document.getElementById(`submitBoutStatus_${this.activeBoutId}`);
+      if (statusEl) {
+        statusEl.className = 'alert alert-info alert-dismissible fade show my-2 py-2 fs-7 print-hide shadow-sm';
+        statusEl.innerHTML = `
+          <strong>✅ Exit Edit Mode:</strong> All bout sheet changes have been saved to DB and synced to Tatami rings!
+          <button type="button" class="btn-close py-2" data-bs-dismiss="alert"></button>
+        `;
+        statusEl.style.display = 'block';
+      }
+    }
+
     if (this.activeBoutId) {
       this.renderBoutSheet(this.activeBoutId, 'activeBoutDiagramContainer');
     }
@@ -499,9 +527,19 @@ const BoutEditor = {
     const bracket = SyncService.state.brackets[boutId];
     if (!bracket) return;
 
+    const now = Date.now();
+    bracket.lastUpdated = now;
+    const bout = (SyncService.state.bouts || []).find(b => b.id === boutId);
+    if (bout) bout.lastUpdated = now;
+
     BracketEngine.advanceByeMatch(bracket, matchNumber);
     SyncService.checkBoutCompletion(boutId);
-    SyncService.saveToLocal();
+
+    if (this.isEditMode) {
+      SyncService.saveToLocalOnly();
+    } else {
+      SyncService.saveToLocal();
+    }
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
     
     const ringContainer = document.getElementById('ringBoutContainer');
@@ -516,9 +554,19 @@ const BoutEditor = {
     const bracket = SyncService.state.brackets[boutId];
     if (!bracket) return;
 
+    const now = Date.now();
+    bracket.lastUpdated = now;
+    const bout = (SyncService.state.bouts || []).find(b => b.id === boutId);
+    if (bout) bout.lastUpdated = now;
+
     BracketEngine.undoMatch(bracket, matchNumber);
     SyncService.checkBoutCompletion(boutId);
-    SyncService.saveToLocal();
+
+    if (this.isEditMode) {
+      SyncService.saveToLocalOnly();
+    } else {
+      SyncService.saveToLocal();
+    }
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
 
     const ringContainer = document.getElementById('ringBoutContainer');
@@ -1296,8 +1344,17 @@ const BoutEditor = {
       comp.branch = branch;
     }
 
+    const now = Date.now();
+    bracket.lastUpdated = now;
+    const bout = (SyncService.state.bouts || []).find(b => b.id === boutId);
+    if (bout) bout.lastUpdated = now;
+
     bootstrap.Modal.getInstance(document.getElementById('kataCompetitorModal')).hide();
-    SyncService.saveToLocal();
+    if (this.isEditMode) {
+      SyncService.saveToLocalOnly();
+    } else {
+      SyncService.saveToLocal();
+    }
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
   },
 
@@ -1315,9 +1372,18 @@ const BoutEditor = {
     // Renumber
     bracket.competitors.forEach((c, idx) => c.no = idx + 1);
 
+    const now = Date.now();
+    bracket.lastUpdated = now;
+    const bout = (SyncService.state.bouts || []).find(b => b.id === boutId);
+    if (bout) bout.lastUpdated = now;
+
     BracketEngine.recalculateKataRanks(bracket);
     bootstrap.Modal.getInstance(document.getElementById('kataCompetitorModal')).hide();
-    SyncService.saveToLocal();
+    if (this.isEditMode) {
+      SyncService.saveToLocalOnly();
+    } else {
+      SyncService.saveToLocal();
+    }
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
   },
 
@@ -1341,8 +1407,20 @@ const BoutEditor = {
     BracketEngine.recalculateKataRanks(sourceBracket);
     BracketEngine.recalculateKataRanks(targetBracket);
 
+    const now = Date.now();
+    sourceBracket.lastUpdated = now;
+    targetBracket.lastUpdated = now;
+    const sourceBout = (SyncService.state.bouts || []).find(b => b.id === sourceBoutId);
+    const targetBout = (SyncService.state.bouts || []).find(b => b.id === targetBoutId);
+    if (sourceBout) sourceBout.lastUpdated = now;
+    if (targetBout) targetBout.lastUpdated = now;
+
     bootstrap.Modal.getInstance(document.getElementById('kataCompetitorModal')).hide();
-    SyncService.saveToLocal();
+    if (this.isEditMode) {
+      SyncService.saveToLocalOnly();
+    } else {
+      SyncService.saveToLocal();
+    }
     this.renderBoutSheet(sourceBoutId, 'activeBoutDiagramContainer');
   },
 
@@ -1359,8 +1437,17 @@ const BoutEditor = {
       BracketEngine.recalculateKataRanks(bracket);
     }
 
+    const now = Date.now();
+    bracket.lastUpdated = now;
+    const bout = (SyncService.state.bouts || []).find(b => b.id === boutId);
+    if (bout) bout.lastUpdated = now;
+
     bootstrap.Modal.getInstance(document.getElementById('kataCompetitorModal')).hide();
-    SyncService.saveToLocal();
+    if (this.isEditMode) {
+      SyncService.saveToLocalOnly();
+    } else {
+      SyncService.saveToLocal();
+    }
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
   },
 
@@ -1388,8 +1475,17 @@ const BoutEditor = {
     bracket.competitors.push(newComp);
     BracketEngine.recalculateKataRanks(bracket);
 
+    const now = Date.now();
+    bracket.lastUpdated = now;
+    const bout = (SyncService.state.bouts || []).find(b => b.id === boutId);
+    if (bout) bout.lastUpdated = now;
+
     bootstrap.Modal.getInstance(document.getElementById('addKataCompetitorModal')).hide();
-    SyncService.saveToLocal();
+    if (this.isEditMode) {
+      SyncService.saveToLocalOnly();
+    } else {
+      SyncService.saveToLocal();
+    }
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
   },
 

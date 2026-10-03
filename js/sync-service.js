@@ -40,6 +40,7 @@ const SyncService = {
 
   isScoringActive: false,
   activeScoringBoutId: null,
+  isEditingActive: false,
 
   startBoutScoring(boutId) {
     this.isScoringActive = true;
@@ -50,6 +51,15 @@ const SyncService = {
   stopBoutScoring() {
     this.isScoringActive = false;
     this.activeScoringBoutId = null;
+  },
+
+  startBoutEditing() {
+    this.isEditingActive = true;
+    this.lastLocalEditTime = Date.now();
+  },
+
+  stopBoutEditing() {
+    this.isEditingActive = false;
   },
 
   init() {
@@ -248,7 +258,7 @@ const SyncService = {
 
   async loadTatamiSyncFromAivenDB() {
     try {
-      if (this.isPushing || this.isScoringActive) return;
+      if (this.isPushing || this.isScoringActive || this.isEditingActive) return;
 
       const headers = {};
       if (this.lastTatamiEtag) {
@@ -278,8 +288,8 @@ const SyncService = {
 
   async loadFromAivenDB() {
     try {
-      // Skip pull if push is in-flight or bout scoring is active
-      if (this.isPushing || this.isScoringActive) return;
+      // Skip pull if push is in-flight or bout scoring/editing is active
+      if (this.isPushing || this.isScoringActive || this.isEditingActive) return;
 
       const headers = {};
       if (this.lastEtag) {
@@ -426,7 +436,7 @@ const SyncService = {
   },
 
   notifyListeners() {
-    if (this.isScoringActive) return; // Prevent background re-rendering while user is actively entering scores
+    if (this.isScoringActive || this.isEditingActive) return; // Prevent background re-rendering while user is actively entering scores or editing
     this.listeners.forEach(cb => cb(this.state));
   },
 
@@ -763,19 +773,30 @@ const SyncService = {
   swapBracketSlots(boutId, slotIndexA, slotIndexB) {
     const bracket = this.state.brackets[boutId];
     if (!bracket) return;
+    const bout = (this.state.bouts || []).find(b => b.id === boutId);
 
     const temp = bracket.slots[slotIndexA];
     bracket.slots[slotIndexA] = bracket.slots[slotIndexB];
     bracket.slots[slotIndexB] = temp;
 
+    const now = Date.now();
+    bracket.lastUpdated = now;
+    if (bout) bout.lastUpdated = now;
+
     this.rebuildRound1Matches(bracket);
     this.checkBoutCompletion(boutId);
-    this.saveToLocal();
+
+    if (this.isEditingActive) {
+      this.saveToLocalOnly();
+    } else {
+      this.saveToLocal();
+    }
   },
 
   updateSlotParticipant(boutId, slotIndex, participantData) {
     const bracket = this.state.brackets[boutId];
     if (!bracket) return;
+    const bout = (this.state.bouts || []).find(b => b.id === boutId);
 
     if (!participantData) {
       bracket.slots[slotIndex] = null;
@@ -794,9 +815,18 @@ const SyncService = {
       bracket.slots[slotIndex] = p;
     }
 
+    const now = Date.now();
+    bracket.lastUpdated = now;
+    if (bout) bout.lastUpdated = now;
+
     this.rebuildRound1Matches(bracket);
     this.checkBoutCompletion(boutId);
-    this.saveToLocal();
+
+    if (this.isEditingActive) {
+      this.saveToLocalOnly();
+    } else {
+      this.saveToLocal();
+    }
   },
 
   moveParticipantToBout(sourceBoutId, sourceSlotIdx, targetBoutId, targetSlotIdx) {
@@ -805,17 +835,31 @@ const SyncService = {
 
     if (!sourceBracket || !targetBracket) return;
 
+    const sourceBout = (this.state.bouts || []).find(b => b.id === sourceBoutId);
+    const targetBout = (this.state.bouts || []).find(b => b.id === targetBoutId);
+
     const movingParticipant = sourceBracket.slots[sourceSlotIdx];
     const occupantTarget = targetBracket.slots[targetSlotIdx];
 
     sourceBracket.slots[sourceSlotIdx] = occupantTarget;
     targetBracket.slots[targetSlotIdx] = movingParticipant;
 
+    const now = Date.now();
+    sourceBracket.lastUpdated = now;
+    targetBracket.lastUpdated = now;
+    if (sourceBout) sourceBout.lastUpdated = now;
+    if (targetBout) targetBout.lastUpdated = now;
+
     this.rebuildRound1Matches(sourceBracket);
     this.rebuildRound1Matches(targetBracket);
     this.checkBoutCompletion(sourceBoutId);
     this.checkBoutCompletion(targetBoutId);
-    this.saveToLocal();
+
+    if (this.isEditingActive) {
+      this.saveToLocalOnly();
+    } else {
+      this.saveToLocal();
+    }
   },
 
   rebuildRound1Matches(bracket) {
