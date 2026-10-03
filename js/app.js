@@ -124,6 +124,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (BoutEditor.activeBoutId && boutEditorView && boutEditorView.style.display !== 'none') {
           BoutEditor.renderBoutSheet(BoutEditor.activeBoutId, 'activeBoutDiagramContainer');
         }
+        const tatamiView = document.getElementById('tatamiView');
+        if (tatamiView && tatamiView.style.display !== 'none') {
+          const select = document.getElementById('tatamiRingSelect');
+          const tId = select ? (parseInt(select.value, 10) || 1) : 1;
+          TatamiManager.renderOperatorView(tId, 'tatamiOperatorContainer');
+        }
       } else if (user.role === 'tatami') {
         TatamiManager.renderOperatorView(user.tatamiId, 'tatamiOperatorContainer');
       }

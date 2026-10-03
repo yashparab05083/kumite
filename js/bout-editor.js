@@ -22,7 +22,7 @@ const BoutEditor = {
     SyncService.isEditingActive = this.isEditMode;
 
     if (!this.isEditMode) {
-      // Exiting Edit Mode -> Trigger single DB update and sync to all Tatamis!
+      // Exiting Edit Mode -> Force Push changes immediately to DB, WebSockets, BroadcastChannel, and Tatamis!
       const now = Date.now();
       if (this.activeBoutId) {
         const bracket = SyncService.state.brackets[this.activeBoutId];
@@ -30,17 +30,19 @@ const BoutEditor = {
         const bout = (SyncService.state.bouts || []).find(b => b.id === this.activeBoutId);
         if (bout) bout.lastUpdated = now;
       }
+      if (SyncService.state.tatamis) {
+        SyncService.state.tatamis.forEach(t => t.lastUpdated = now);
+      }
       SyncService.state.lastUpdated = now;
 
-      // Save locally and push to Aiven Cloud DB & WebSocket clients
-      SyncService.saveToLocal();
-      SyncService.pushTatamiSyncToAivenDB();
+      // Force push immediately to DB & all Tatami logins
+      SyncService.forcePushToDBAndTatamis();
 
       const statusEl = document.getElementById(`submitBoutStatus_${this.activeBoutId}`);
       if (statusEl) {
         statusEl.className = 'alert alert-info alert-dismissible fade show my-2 py-2 fs-7 print-hide shadow-sm';
         statusEl.innerHTML = `
-          <strong>✅ Exit Edit Mode:</strong> All bout sheet changes have been saved to DB and synced to Tatami rings!
+          <strong>⚡ Exit Edit Mode:</strong> All bout sheet changes force-pushed immediately to cloud DB & Tatami rings!
           <button type="button" class="btn-close py-2" data-bs-dismiss="alert"></button>
         `;
         statusEl.style.display = 'block';
