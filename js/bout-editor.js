@@ -565,11 +565,7 @@ const BoutEditor = {
     BracketEngine.advanceByeMatch(bracket, matchNumber);
     SyncService.checkBoutCompletion(boutId);
 
-    if (this.isEditMode) {
-      SyncService.saveToLocalOnly();
-    } else {
-      SyncService.saveToLocal();
-    }
+    SyncService.saveToLocal();
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
     
     const ringContainer = document.getElementById('ringBoutContainer');
@@ -592,11 +588,7 @@ const BoutEditor = {
     BracketEngine.undoMatch(bracket, matchNumber);
     SyncService.checkBoutCompletion(boutId);
 
-    if (this.isEditMode) {
-      SyncService.saveToLocalOnly();
-    } else {
-      SyncService.saveToLocal();
-    }
+    SyncService.saveToLocal();
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
 
     const ringContainer = document.getElementById('ringBoutContainer');
@@ -1039,7 +1031,13 @@ const BoutEditor = {
     const prevActiveTie = bracket.tieBreaker ? bracket.tieBreaker.activeTie : null;
     BracketEngine.recalculateKataRanks(bracket);
     SyncService.checkBoutCompletion(boutId);
-    SyncService.saveToLocalOnly();
+
+    const safeTime = Math.max(Date.now(), (bracket.lastUpdated || 0) + 1000, (SyncService.state.lastUpdated || 0) + 1000);
+    bracket.lastUpdated = safeTime;
+    const bout = (SyncService.state.bouts || []).find(b => b.id === boutId);
+    if (bout) bout.lastUpdated = safeTime;
+
+    SyncService.saveToLocal();
 
     const newActiveTie = bracket.tieBreaker ? bracket.tieBreaker.activeTie : null;
     if (prevActiveTie !== newActiveTie) {
@@ -1183,7 +1181,13 @@ const BoutEditor = {
     const prevActiveTie = bracket.tieBreaker ? bracket.tieBreaker.activeTie : null;
     BracketEngine.recalculateKataRanks(bracket);
     SyncService.checkBoutCompletion(boutId);
-    SyncService.saveToLocalOnly();
+
+    const safeTime = Math.max(Date.now(), (bracket.lastUpdated || 0) + 1000, (SyncService.state.lastUpdated || 0) + 1000);
+    bracket.lastUpdated = safeTime;
+    const bout = (SyncService.state.bouts || []).find(b => b.id === boutId);
+    if (bout) bout.lastUpdated = safeTime;
+
+    SyncService.saveToLocal();
 
     const newActiveTie = bracket.tieBreaker ? bracket.tieBreaker.activeTie : null;
     if (prevActiveTie !== newActiveTie) {
@@ -1386,14 +1390,23 @@ const BoutEditor = {
       comp.branch = branch;
     }
 
-    const now = Date.now();
-    bracket.lastUpdated = now;
+    const safeTime = Math.max(Date.now(), (bracket.lastUpdated || 0) + 1000, (SyncService.state.lastUpdated || 0) + 1000);
+    bracket.lastUpdated = safeTime;
     const bout = (SyncService.state.bouts || []).find(b => b.id === boutId);
-    if (bout) bout.lastUpdated = now;
+    if (bout) {
+      bout.lastUpdated = safeTime;
+      bout.participants = bracket.competitors.map(c => ({
+        id: c.id,
+        name: c.name,
+        branch: c.branch,
+        gender: bracket.gender,
+        age: bracket.ageCategory,
+        beltTier: bracket.beltTier
+      }));
+    }
 
     bootstrap.Modal.getInstance(document.getElementById('kataCompetitorModal')).hide();
     SyncService.saveToLocal();
-    SyncService.pushTatamiSyncToAivenDB();
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
     const ringContainer = document.getElementById('ringBoutContainer');
     if (ringContainer) this.renderBoutSheet(boutId, 'ringBoutContainer');
@@ -1413,15 +1426,24 @@ const BoutEditor = {
     // Renumber
     bracket.competitors.forEach((c, idx) => c.no = idx + 1);
 
-    const now = Date.now();
-    bracket.lastUpdated = now;
+    const safeTime = Math.max(Date.now(), (bracket.lastUpdated || 0) + 1000, (SyncService.state.lastUpdated || 0) + 1000);
+    bracket.lastUpdated = safeTime;
     const bout = (SyncService.state.bouts || []).find(b => b.id === boutId);
-    if (bout) bout.lastUpdated = now;
+    if (bout) {
+      bout.lastUpdated = safeTime;
+      bout.participants = bracket.competitors.map(c => ({
+        id: c.id,
+        name: c.name,
+        branch: c.branch,
+        gender: bracket.gender,
+        age: bracket.ageCategory,
+        beltTier: bracket.beltTier
+      }));
+    }
 
     BracketEngine.recalculateKataRanks(bracket);
     bootstrap.Modal.getInstance(document.getElementById('kataCompetitorModal')).hide();
     SyncService.saveToLocal();
-    SyncService.pushTatamiSyncToAivenDB();
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
     const ringContainer = document.getElementById('ringBoutContainer');
     if (ringContainer) this.renderBoutSheet(boutId, 'ringBoutContainer');
@@ -1447,17 +1469,22 @@ const BoutEditor = {
     BracketEngine.recalculateKataRanks(sourceBracket);
     BracketEngine.recalculateKataRanks(targetBracket);
 
-    const now = Date.now();
-    sourceBracket.lastUpdated = now;
-    targetBracket.lastUpdated = now;
+    const safeTime = Math.max(Date.now(), (sourceBracket.lastUpdated || 0) + 1000, (targetBracket.lastUpdated || 0) + 1000, (SyncService.state.lastUpdated || 0) + 1000);
+    sourceBracket.lastUpdated = safeTime;
+    targetBracket.lastUpdated = safeTime;
     const sourceBout = (SyncService.state.bouts || []).find(b => b.id === sourceBoutId);
     const targetBout = (SyncService.state.bouts || []).find(b => b.id === targetBoutId);
-    if (sourceBout) sourceBout.lastUpdated = now;
-    if (targetBout) targetBout.lastUpdated = now;
+    if (sourceBout) {
+      sourceBout.lastUpdated = safeTime;
+      sourceBout.participants = sourceBracket.competitors.map(c => ({ id: c.id, name: c.name, branch: c.branch, gender: sourceBracket.gender, age: sourceBracket.ageCategory, beltTier: sourceBracket.beltTier }));
+    }
+    if (targetBout) {
+      targetBout.lastUpdated = safeTime;
+      targetBout.participants = targetBracket.competitors.map(c => ({ id: c.id, name: c.name, branch: c.branch, gender: targetBracket.gender, age: targetBracket.ageCategory, beltTier: targetBracket.beltTier }));
+    }
 
     bootstrap.Modal.getInstance(document.getElementById('kataCompetitorModal')).hide();
     SyncService.saveToLocal();
-    SyncService.pushTatamiSyncToAivenDB();
     this.renderBoutSheet(sourceBoutId, 'activeBoutDiagramContainer');
     const ringContainer = document.getElementById('ringBoutContainer');
     if (ringContainer) this.renderBoutSheet(sourceBoutId, 'ringBoutContainer');
@@ -1476,14 +1503,16 @@ const BoutEditor = {
       BracketEngine.recalculateKataRanks(bracket);
     }
 
-    const now = Date.now();
-    bracket.lastUpdated = now;
+    const safeTime = Math.max(Date.now(), (bracket.lastUpdated || 0) + 1000, (SyncService.state.lastUpdated || 0) + 1000);
+    bracket.lastUpdated = safeTime;
     const bout = (SyncService.state.bouts || []).find(b => b.id === boutId);
-    if (bout) bout.lastUpdated = now;
+    if (bout) {
+      bout.lastUpdated = safeTime;
+      bout.participants = bracket.competitors.map(c => ({ id: c.id, name: c.name, branch: c.branch, gender: bracket.gender, age: bracket.ageCategory, beltTier: bracket.beltTier }));
+    }
 
     bootstrap.Modal.getInstance(document.getElementById('kataCompetitorModal')).hide();
     SyncService.saveToLocal();
-    SyncService.pushTatamiSyncToAivenDB();
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
     const ringContainer = document.getElementById('ringBoutContainer');
     if (ringContainer) this.renderBoutSheet(boutId, 'ringBoutContainer');
@@ -1513,14 +1542,16 @@ const BoutEditor = {
     bracket.competitors.push(newComp);
     BracketEngine.recalculateKataRanks(bracket);
 
-    const now = Date.now();
-    bracket.lastUpdated = now;
+    const safeTime = Math.max(Date.now(), (bracket.lastUpdated || 0) + 1000, (SyncService.state.lastUpdated || 0) + 1000);
+    bracket.lastUpdated = safeTime;
     const bout = (SyncService.state.bouts || []).find(b => b.id === boutId);
-    if (bout) bout.lastUpdated = now;
+    if (bout) {
+      bout.lastUpdated = safeTime;
+      bout.participants = bracket.competitors.map(c => ({ id: c.id, name: c.name, branch: c.branch, gender: bracket.gender, age: bracket.ageCategory, beltTier: bracket.beltTier }));
+    }
 
     bootstrap.Modal.getInstance(document.getElementById('addKataCompetitorModal')).hide();
     SyncService.saveToLocal();
-    SyncService.pushTatamiSyncToAivenDB();
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
     const ringContainer = document.getElementById('ringBoutContainer');
     if (ringContainer) this.renderBoutSheet(boutId, 'ringBoutContainer');

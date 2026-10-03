@@ -64,7 +64,8 @@ const TatamiManager = {
 
     const assignedIds = Array.isArray(tatami.assignedBoutIds) ? tatami.assignedBoutIds : [];
     const assignedBouts = SyncService.state.bouts.filter(b => (assignedIds && assignedIds.indexOf(b.id) !== -1) || b.tatamiId === numericTatamiId);
-    const activeBout = SyncService.state.bouts.find(b => b.id === tatami.activeBoutId);
+    const activeBoutId = tatami.activeBoutId || BoutEditor.activeBoutId;
+    const activeBout = SyncService.state.bouts.find(b => b.id === activeBoutId);
 
     let html = `
       <div class="card shadow mb-4">

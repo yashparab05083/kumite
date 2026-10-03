@@ -36,6 +36,8 @@ const SyncService = {
   TATAMI_API_URL: '/api/sync/tatamis',
   GITHUB_RAW_URL: 'https://raw.githubusercontent.com/yashparab05083/kumite/main/tournament_data.json',
 
+  syncChannel: (typeof BroadcastChannel !== 'undefined') ? new BroadcastChannel('kumite_sync_channel') : null,
+  ws: null,
   lastTatamiEtag: null,
 
   isScoringActive: false,
@@ -74,7 +76,18 @@ const SyncService = {
       this.initRoomSync(savedRoom, false);
     }
 
-    // Listen for tab sync on same device
+    // Listen for tab sync on same device via BroadcastChannel
+    if (this.syncChannel) {
+      this.syncChannel.onmessage = (event) => {
+        if (event.data && event.data.state) {
+          this.mergeState(event.data.state);
+          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
+          this.notifyListeners();
+        }
+      };
+    }
+
+    // Listen for tab sync on same device via storage event
     window.addEventListener('storage', (e) => {
       if (e.key === this.STORAGE_KEY) {
         this.loadFromLocal();
@@ -133,9 +146,12 @@ const SyncService = {
         } else {
           const exTime = exBout.lastUpdated || 0;
           const incTime = incBout.lastUpdated || 0;
-          const mergedParts = (incBout.participants && incBout.participants.length > 0) ? incBout.participants : (exBout.participants || []);
           const chosenBout = incTime >= exTime ? { ...exBout, ...incBout } : { ...incBout, ...exBout };
-          chosenBout.participants = mergedParts;
+          if (incTime >= exTime && incBout.participants) {
+            chosenBout.participants = incBout.participants;
+          } else if (exBout.participants) {
+            chosenBout.participants = exBout.participants;
+          }
           boutMap.set(incBout.id, chosenBout);
         }
       });
@@ -153,6 +169,12 @@ const SyncService = {
           const incTime = incBr.lastUpdated || 0;
           if (incTime >= exTime) {
             mergedBrackets[boutId] = incBr;
+          } else {
+            const incDone = (incBr.matches || []).filter(m => m.status === 'Completed').length;
+            const exDone = (exBr.matches || []).filter(m => m.status === 'Completed').length;
+            if (incDone > exDone) {
+              mergedBrackets[boutId] = incBr;
+            }
           }
         }
       }
@@ -201,6 +223,7 @@ const SyncService = {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${window.location.host}/ws`;
       const ws = new WebSocket(wsUrl);
+      this.ws = ws;
 
       ws.onmessage = (event) => {
         if (!event.data) return;
@@ -233,7 +256,7 @@ const SyncService = {
         }
         try {
           const cloudData = JSON.parse(event.data);
-          if (cloudData && cloudData.bouts && Array.isArray(cloudData.bouts) && cloudData.bouts.length > 0) {
+          if (cloudData && (cloudData.bouts || cloudData.tatamis || cloudData.brackets)) {
             this.mergeState(cloudData);
             localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
             this.notifyListeners();
@@ -244,11 +267,12 @@ const SyncService = {
       };
 
       ws.onclose = () => {
+        this.ws = null;
         setTimeout(() => this.initWebSocketSync(), 3000);
       };
 
       ws.onerror = () => {
-        ws.close();
+        try { ws.close(); } catch(e) {}
       };
     } catch (e) {
       console.warn('WebSocket init error:', e);
@@ -257,7 +281,8 @@ const SyncService = {
 
   async loadTatamiSyncFromAivenDB() {
     try {
-      if (this.isPushing || this.isScoringActive || this.isEditingActive) return;
+      // Protect recent local edits from being overwritten by 5-second polling
+      if (this.isPushing || (Date.now() - (this.lastLocalEditTime || 0) < 4000)) return;
 
       const headers = {};
       if (this.lastTatamiEtag) {
@@ -287,8 +312,8 @@ const SyncService = {
 
   async loadFromAivenDB() {
     try {
-      // Skip pull if push is in-flight or bout scoring/editing is active
-      if (this.isPushing || this.isScoringActive || this.isEditingActive) return;
+      // Protect recent local edits from being overwritten by 15-second polling
+      if (this.isPushing || (Date.now() - (this.lastLocalEditTime || 0) < 4000)) return;
 
       const headers = {};
       if (this.lastEtag) {
@@ -426,8 +451,15 @@ const SyncService = {
   },
 
   notifyListeners() {
-    if (this.isScoringActive) return; // Prevent background re-rendering while user is actively entering scores
-    this.listeners.forEach(cb => cb(this.state));
+    // Only pause background re-rendering if user is currently typing in an input element
+    const activeEl = document.activeElement;
+    const isTyping = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA') && document.hasFocus();
+    if (isTyping && this.isScoringActive) {
+      return;
+    }
+    this.listeners.forEach(cb => {
+      try { cb(this.state); } catch (e) { console.error('Listener callback error:', e); }
+    });
   },
 
   loadFromLocal() {
@@ -502,8 +534,10 @@ const SyncService = {
 
   saveToLocal() {
     try {
-      this.state.lastUpdated = Date.now();
-      this.lastLocalEditTime = Date.now();
+      const now = Date.now();
+      const safeTime = Math.max(now, (this.state.lastUpdated || 0) + 1000);
+      this.state.lastUpdated = safeTime;
+      this.lastLocalEditTime = safeTime;
 
       const serialized = JSON.stringify(this.state);
       localStorage.setItem(this.STORAGE_KEY, serialized);
@@ -515,22 +549,76 @@ const SyncService = {
       // Notify UI listeners immediately for instant UI responsiveness
       this.notifyListeners();
 
-      // Dispatch network pushes asynchronously to prevent UI thread blocking
-      setTimeout(() => {
-        this.broadcastStateToPeers();
-        this.pushToAivenDB();
+      // Instant broadcast across tabs on the same machine
+      if (this.syncChannel) {
+        try {
+          this.syncChannel.postMessage({ type: 'SYNC_UPDATE', state: this.state, timestamp: safeTime });
+        } catch (e) {}
+      }
 
-        if (typeof FirebaseConfig !== 'undefined' && FirebaseConfig.isInitialized && FirebaseConfig.db) {
-          try {
-            FirebaseConfig.db.ref('kumite_tournament_data_v1').set(this.state).catch(err => {
-              console.warn('Firebase cloud sync push error:', err);
-            });
-          } catch (e) {}
-        }
-      }, 0);
+      // Instant WebSocket push to server (relays to all connected devices in <2ms)
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        try {
+          this.ws.send(serialized);
+        } catch (e) {}
+      }
+
+      // Immediate HTTP POST pushes
+      this.pushImmediate();
     } catch (e) {
       console.error('Failed to save local state:', e);
     }
+  },
+
+  pushImmediate() {
+    if (!this.state || !this.state.bouts || this.state.bouts.length === 0) return;
+
+    if (this.pendingPushTimeout) {
+      clearTimeout(this.pendingPushTimeout);
+      this.pendingPushTimeout = null;
+    }
+
+    const payload = JSON.stringify(this.state);
+
+    // 1. Post to /api/tournament
+    fetch(this.AIVEN_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload
+    }).then(res => {
+      if (res.ok) {
+        const etag = res.headers.get('ETag');
+        if (etag) this.lastEtag = etag;
+      }
+    }).catch(() => {});
+
+    // 2. Post fast tatami sync payload
+    const tatamiPayload = JSON.stringify({
+      tatamis: this.state.tatamis || [],
+      bouts: this.state.bouts || [],
+      brackets: this.state.brackets || {},
+      lastUpdated: this.state.lastUpdated || Date.now()
+    });
+
+    fetch(this.TATAMI_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: tatamiPayload
+    }).then(res => {
+      if (res.ok) {
+        const etag = res.headers.get('ETag');
+        if (etag) this.lastTatamiEtag = etag;
+      }
+    }).catch(() => {});
+
+    // 3. Optional Firebase Cloud Sync
+    if (typeof FirebaseConfig !== 'undefined' && FirebaseConfig.isInitialized && FirebaseConfig.db) {
+      try {
+        FirebaseConfig.db.ref('kumite_tournament_data_v1').set(this.state).catch(() => {});
+      } catch (e) {}
+    }
+
+    this.broadcastStateToPeers();
   },
 
   setBoutsAndBrackets(bouts, brackets) {
@@ -769,9 +857,12 @@ const SyncService = {
     bracket.slots[slotIndexA] = bracket.slots[slotIndexB];
     bracket.slots[slotIndexB] = temp;
 
-    const now = Date.now();
-    bracket.lastUpdated = now;
-    if (bout) bout.lastUpdated = now;
+    const safeTime = Math.max(Date.now(), (bracket.lastUpdated || 0) + 1000, (this.state.lastUpdated || 0) + 1000);
+    bracket.lastUpdated = safeTime;
+    if (bout) {
+      bout.lastUpdated = safeTime;
+      bout.participants = bracket.slots.filter(s => s !== null && s !== undefined);
+    }
 
     this.rebuildRound1Matches(bracket);
     this.checkBoutCompletion(boutId);
@@ -800,9 +891,12 @@ const SyncService = {
       bracket.slots[slotIndex] = p;
     }
 
-    const now = Date.now();
-    bracket.lastUpdated = now;
-    if (bout) bout.lastUpdated = now;
+    const safeTime = Math.max(Date.now(), (bracket.lastUpdated || 0) + 1000, (this.state.lastUpdated || 0) + 1000);
+    bracket.lastUpdated = safeTime;
+    if (bout) {
+      bout.lastUpdated = safeTime;
+      bout.participants = bracket.slots.filter(s => s !== null && s !== undefined);
+    }
 
     this.rebuildRound1Matches(bracket);
     this.checkBoutCompletion(boutId);
@@ -824,11 +918,17 @@ const SyncService = {
     sourceBracket.slots[sourceSlotIdx] = occupantTarget;
     targetBracket.slots[targetSlotIdx] = movingParticipant;
 
-    const now = Date.now();
-    sourceBracket.lastUpdated = now;
-    targetBracket.lastUpdated = now;
-    if (sourceBout) sourceBout.lastUpdated = now;
-    if (targetBout) targetBout.lastUpdated = now;
+    const safeTime = Math.max(Date.now(), (sourceBracket.lastUpdated || 0) + 1000, (targetBracket.lastUpdated || 0) + 1000, (this.state.lastUpdated || 0) + 1000);
+    sourceBracket.lastUpdated = safeTime;
+    targetBracket.lastUpdated = safeTime;
+    if (sourceBout) {
+      sourceBout.lastUpdated = safeTime;
+      sourceBout.participants = sourceBracket.slots.filter(s => s !== null && s !== undefined);
+    }
+    if (targetBout) {
+      targetBout.lastUpdated = safeTime;
+      targetBout.participants = targetBracket.slots.filter(s => s !== null && s !== undefined);
+    }
 
     this.rebuildRound1Matches(sourceBracket);
     this.rebuildRound1Matches(targetBracket);

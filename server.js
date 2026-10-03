@@ -264,6 +264,28 @@ wss.on('connection', (ws) => {
       ws.send(JSON.stringify(ramCache));
     } catch (e) {}
   }
+
+  ws.on('message', (message) => {
+    try {
+      if (!message) return;
+      const str = message.toString('utf8');
+      if (str === 'PING') {
+        try { ws.send('PONG'); } catch(e) {}
+        return;
+      }
+      const incoming = JSON.parse(str);
+      if (incoming && typeof incoming === 'object' && incoming.bouts) {
+        ramCache = mergeTournamentState(ramCache, incoming);
+        updateEtag();
+        const jsonStr = JSON.stringify(ramCache);
+        broadcastToClients(jsonStr);
+        scheduleFileSave(jsonStr);
+        if (isDbConnected) scheduleDbSave(ramCache);
+      }
+    } catch (err) {
+      console.warn('WS incoming message error:', err.message);
+    }
+  });
 });
 
 // 1. GET /api/tournament - Instant RAM read with ETag support (<1ms)
@@ -342,12 +364,12 @@ function mergeTournamentState(existing, incoming) {
       } else {
         const exTime = exBr.lastUpdated || 0;
         const incTime = incBr.lastUpdated || 0;
-        if (incTime !== exTime) {
-          mergedBrackets[boutId] = incTime > exTime ? incBr : exBr;
+        if (incTime >= exTime) {
+          mergedBrackets[boutId] = incBr;
         } else {
           const incDone = (incBr.matches || []).filter(m => m.status === 'Completed').length;
           const exDone = (exBr.matches || []).filter(m => m.status === 'Completed').length;
-          mergedBrackets[boutId] = incDone >= exDone ? incBr : exBr;
+          mergedBrackets[boutId] = incDone > exDone ? incBr : exBr;
         }
       }
     }
@@ -366,9 +388,12 @@ function mergeTournamentState(existing, incoming) {
       } else {
         const exTime = exBout.lastUpdated || 0;
         const incTime = incBout.lastUpdated || 0;
-        const mergedParts = (incBout.participants && incBout.participants.length > 0) ? incBout.participants : (exBout.participants || []);
         const chosenBout = incTime >= exTime ? { ...exBout, ...incBout } : { ...incBout, ...exBout };
-        chosenBout.participants = mergedParts;
+        if (incTime >= exTime && incBout.participants) {
+          chosenBout.participants = incBout.participants;
+        } else if (!chosenBout.participants && exBout.participants) {
+          chosenBout.participants = exBout.participants;
+        }
         boutMap.set(incBout.id, chosenBout);
       }
     });
