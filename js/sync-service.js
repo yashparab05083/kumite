@@ -849,8 +849,9 @@ const SyncService = {
       const allScored = activeScored.length > 0 && activeScored.length === bracket.competitors.length;
       const isFlagPending = bracket.tieBreaker && bracket.tieBreaker.flagVote && !bracket.tieBreaker.flagVote.winnerId;
       const isRescorePending = bracket.tieBreaker && bracket.tieBreaker.rescoreRound && bracket.tieBreaker.rescoreRound.competitors.some(c => c.totalScore === 0);
+      const winnersDeclared = Boolean(bracket.isWinnersDeclared || (bracket.medals && bracket.medals.gold));
 
-      if (allScored && !isFlagPending && !isRescorePending) {
+      if ((allScored || winnersDeclared) && !isFlagPending && !isRescorePending && activeScored.length > 0) {
         bout.status = 'Completed';
       } else {
         bout.status = activeScored.length > 0 ? 'In Progress' : (bout.tatamiId ? 'Assigned' : 'Pending');

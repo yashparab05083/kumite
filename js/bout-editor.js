@@ -219,7 +219,9 @@ const BoutEditor = {
           <button class="btn btn-warning text-dark btn-sm fw-bold" onclick="BoutEditor.downloadAllBoutsPDF()">📥 Download All Bout Sheets PDF</button>
           <button class="btn btn-secondary btn-sm fw-bold" onclick="BoutEditor.printBoutSheet()">🖨️ Print Sheet</button>
           ${bracket.eventType === 'Kata' ? `
-            <button id="finishKataBtn_${boutId}" class="btn btn-primary btn-sm fw-bold px-3 shadow-sm" onclick="BoutEditor.finishKataRound('${boutId}')">🏁 Calculate & Finish Round 1</button>
+            <button id="declareKataBtn_${boutId}" class="btn btn-warning text-dark btn-sm fw-bold px-3 shadow-sm d-flex align-items-center gap-1" onclick="BoutEditor.calculateAndDeclareKataWinners('${boutId}')">
+              🏆 Calculate & Declare Winners
+            </button>
           ` : ''}
           <button id="submitBtn_${boutId}" class="btn btn-success btn-sm fw-bold px-3 shadow-sm" onclick="BoutEditor.submitAndFinishBout('${boutId}')">💾 Submit / Finish Bout</button>
         </div>
@@ -262,8 +264,30 @@ const BoutEditor = {
     }
   },
 
-  finishKataRound(boutId) {
-    const bracket = SyncService.state.brackets[boutId];
+  playCelebrationFanfare() {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+      notes.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.value = freq;
+        const startTime = ctx.currentTime + (idx * 0.12);
+        gain.gain.setValueAtTime(0, startTime);
+        gain.gain.linearRampToValueAtTime(0.25, startTime + 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.6);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(startTime);
+        osc.stop(startTime + 0.65);
+      });
+    } catch (e) {}
+  },
+
+  readKataDOMInputs(bracket, boutId) {
     if (!bracket || bracket.eventType !== 'Kata') return;
 
     // 1. Read all Main Kata Table inputs from DOM
@@ -279,8 +303,8 @@ const BoutEditor = {
         [0, 1, 2, 3, 4].forEach(refIdx => {
           const inputEl = document.getElementById(`kataInput_${boutId}_${comp.id}_${refIdx}`);
           if (inputEl) {
-            const val = inputEl.value;
-            if (val !== '' || inputEl.dataset.touched === 'true') {
+            const val = inputEl.value.trim();
+            if (val !== '') {
               const num = parseFloat(val);
               comp.scores[refIdx] = isNaN(num) ? 5.0 : num;
               comp.refereeTouched[refIdx] = true;
@@ -304,8 +328,8 @@ const BoutEditor = {
         [0, 1, 2, 3, 4].forEach(refIdx => {
           const inputEl = document.getElementById(`kataRescoreInput_${boutId}_${rc.id}_${refIdx}`);
           if (inputEl) {
-            const val = inputEl.value;
-            if (val !== '' || inputEl.dataset.touched === 'true') {
+            const val = inputEl.value.trim();
+            if (val !== '') {
               const num = parseFloat(val);
               rc.scores[refIdx] = isNaN(num) ? 5.0 : num;
               rc.refereeTouched[refIdx] = true;
@@ -315,21 +339,314 @@ const BoutEditor = {
         rc.hasScored = rc.refereeTouched.some(t => t);
       });
     }
+  },
 
-    // 3. Recalculate ranks, check completion, and save/broadcast
-    SyncService.lastLocalEditTime = Date.now();
-    BracketEngine.recalculateKataRanks(bracket);
+  calculateKataScoresOnly(boutId) {
+    if (this._kataSaveTimeout) clearTimeout(this._kataSaveTimeout);
+    const bracket = SyncService.state.brackets[boutId];
+    if (!bracket || bracket.eventType !== 'Kata') return;
+
+    this.readKataDOMInputs(bracket, boutId);
+    BracketEngine.recalculateKataRanks(bracket, { triggerTieBreaker: false });
+
+    const safeTime = Math.max(Date.now(), (bracket.lastUpdated || 0) + 1000, (SyncService.state.lastUpdated || 0) + 1000);
+    bracket.lastUpdated = safeTime;
+    const bout = (SyncService.state.bouts || []).find(b => b.id === boutId);
+    if (bout) bout.lastUpdated = safeTime;
+
+    SyncService.saveToLocal();
+    this.updateKataDOM(boutId);
+
+    const statusEl = document.getElementById(`submitBoutStatus_${boutId}`);
+    if (statusEl) {
+      statusEl.className = 'alert alert-info alert-dismissible fade show my-2 py-2 fs-7 print-hide shadow-sm';
+      statusEl.innerHTML = '<strong>⚡ Scores Recalculated!</strong> Current judge totals and standings updated on sheet. <button type="button" class="btn-close py-2" data-bs-dismiss="alert"></button>';
+      statusEl.style.display = 'block';
+    }
+  },
+
+  calculateAndDeclareKataWinners(boutId) {
+    if (this._kataSaveTimeout) clearTimeout(this._kataSaveTimeout);
+    const bracket = SyncService.state.brackets[boutId];
+    if (!bracket || bracket.eventType !== 'Kata') return alert('Kata bout sheet not found!');
+
+    // 1. Read all inputs from DOM
+    this.readKataDOMInputs(bracket, boutId);
+
+    // 2. Validate that at least one competitor has scored
+    const activeScored = bracket.competitors.filter(c => (c.hasScored && c.totalScore > 0) || (c.refereeTouched && c.refereeTouched.some(t => t)));
+    if (activeScored.length === 0) {
+      return alert('⚠️ Please enter referee scores into the table before calculating winners!');
+    }
+
+    // 3. If some competitors haven't performed/scored yet, ask for confirmation
+    if (activeScored.length < bracket.competitors.length) {
+      const confirmMsg = `⚠️ Notice: Only ${activeScored.length} out of ${bracket.competitors.length} competitors have scores entered.\n\nDo you want to calculate official results and declare winners now with the scored competitors?`;
+      if (!confirm(confirmMsg)) return;
+    }
+
+    // 4. Run recalculate kata ranks with triggerTieBreaker: true
+    BracketEngine.recalculateKataRanks(bracket, { triggerTieBreaker: true });
+
+    // 5. Check if a tie requires referee action before declaring winners
+    if (bracket.tieBreaker && bracket.tieBreaker.activeTie === '2WAY_FLAG') {
+      SyncService.saveToLocal();
+      this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
+      const ringContainer = document.getElementById('ringBoutContainer');
+      if (ringContainer) this.renderBoutSheet(boutId, 'ringBoutContainer');
+      alert('⚠️ 2-Way Tie Detected for Medal Position!\n\nPlease have the referees cast their AKA (Red) or AAO (Blue) flag vote using the buttons on the screen to declare the official winner.');
+      const flagVoteEl = document.querySelector('.card.border-warning');
+      if (flagVoteEl) flagVoteEl.scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+
+    if (bracket.tieBreaker && bracket.tieBreaker.activeTie === '3WAY_RESCORE') {
+      SyncService.saveToLocal();
+      this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
+      const ringContainer = document.getElementById('ringBoutContainer');
+      if (ringContainer) this.renderBoutSheet(boutId, 'ringBoutContainer');
+      alert('⚠️ 3+ Way Tie Detected!\n\nPlease enter the referee scores for the tied contestants in the Re-Score Round table below to determine final winners.');
+      return;
+    }
+
+    // 6. Winners are ready! Mark as declared and completed
+    bracket.isWinnersDeclared = true;
+    const bout = (SyncService.state.bouts || []).find(b => b.id === boutId);
+    if (bout) {
+      bout.status = 'Completed';
+    }
+
+    const safeTime = Math.max(Date.now(), (bracket.lastUpdated || 0) + 1000, (SyncService.state.lastUpdated || 0) + 1000);
+    bracket.lastUpdated = safeTime;
+    if (bout) bout.lastUpdated = safeTime;
+
+    // Release tatami active match if currently running on a ring
+    (SyncService.state.tatamis || []).forEach(tatami => {
+      if (tatami.activeBoutId === boutId) {
+        tatami.activeBoutId = null;
+        tatami.activeMatchNumber = null;
+        tatami.status = 'Empty';
+        tatami.lastUpdated = safeTime;
+      }
+    });
+
+    SyncService.lastLocalEditTime = safeTime;
     SyncService.checkBoutCompletion(boutId);
+    SyncService.stopBoutScoring();
     SyncService.saveToLocal();
     SyncService.pushToAivenDB();
-    SyncService.stopBoutScoring();
 
-    // 4. Re-render bout sheet
+    // Re-render bout sheet to show declared winners banner
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
     const ringContainer = document.getElementById('ringBoutContainer');
     if (ringContainer) {
       this.renderBoutSheet(boutId, 'ringBoutContainer');
     }
+
+    // Play celebration chime and show winner declaration modal
+    this.playCelebrationFanfare();
+    this.showKataWinnerModal(boutId);
+  },
+
+  finishKataRound(boutId) {
+    this.calculateAndDeclareKataWinners(boutId);
+  },
+
+  showKataWinnerModal(boutId) {
+    const bracket = SyncService.state.brackets[boutId];
+    if (!bracket || bracket.eventType !== 'Kata') return;
+
+    const medals = bracket.medals || {};
+    const gold = medals.gold;
+    const silver = medals.silver;
+    const bronze1 = medals.bronze1;
+    const bronze2 = medals.bronze2;
+
+    const goldName = gold ? this.cleanParticipantName(gold.name) : 'No Winner';
+    const goldBranch = gold ? (gold.branch || 'Main Dojo') : '';
+    const goldScore = (gold && gold.totalScore) ? gold.totalScore.toFixed(2) : '0.00';
+
+    const silverName = silver ? this.cleanParticipantName(silver.name) : 'Pending';
+    const silverBranch = silver ? (silver.branch || 'Main Dojo') : '';
+    const silverScore = (silver && silver.totalScore) ? silver.totalScore.toFixed(2) : '-';
+
+    const bronze1Name = bronze1 ? this.cleanParticipantName(bronze1.name) : 'Pending';
+    const bronze1Branch = bronze1 ? (bronze1.branch || 'Main Dojo') : '';
+    const bronze1Score = (bronze1 && bronze1.totalScore) ? bronze1.totalScore.toFixed(2) : '-';
+
+    const bronze2Name = bronze2 ? this.cleanParticipantName(bronze2.name) : null;
+    const bronze2Branch = bronze2 ? (bronze2.branch || 'Main Dojo') : '';
+    const bronze2Score = (bronze2 && bronze2.totalScore) ? bronze2.totalScore.toFixed(2) : '-';
+
+    const modalHtml = `
+      <div class="modal fade" id="kataWinnerModal" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+          <div class="modal-content shadow-lg border-3 border-warning">
+            <div class="modal-header bg-warning bg-gradient text-dark py-3">
+              <h4 class="modal-title fw-bold m-0 d-flex align-items-center gap-2">
+                🏆 OFFICIAL KATA WINNERS DECLARED!
+              </h4>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4 text-center">
+              <div class="badge bg-dark text-warning fs-6 px-3 py-2 mb-2">${bracket.boutName}</div>
+              <p class="text-muted small mb-4">Official Results & Podium Standings | Shotokan Karate Championship</p>
+
+              <!-- 🥇 1st Place - Gold Medal (Hero Card) -->
+              <div class="card border-warning border-3 bg-warning bg-opacity-10 shadow mb-3 p-3 text-start">
+                <div class="d-flex justify-content-between align-items-center">
+                  <div class="d-flex align-items-center gap-3">
+                    <span style="font-size: 3.5rem; line-height: 1;">🥇</span>
+                    <div>
+                      <span class="badge bg-warning text-dark fw-bold mb-1">GOLD MEDALIST - 1ST PLACE</span>
+                      <h2 class="fw-bold mb-0 text-dark">${goldName}</h2>
+                      <div class="text-muted fw-semibold">🥋 Dojo / Branch: ${goldBranch}</div>
+                    </div>
+                  </div>
+                  <div class="text-end">
+                    <small class="text-muted fw-bold d-block">FINAL SCORE</small>
+                    <span class="display-6 fw-bold text-dark">${goldScore}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 🥈 Silver and 🥉 Bronze Podiums -->
+              <div class="row g-3 text-start">
+                ${silver ? `
+                  <div class="col-md-${bronze2Name ? '4' : '6'}">
+                    <div class="card border-secondary border-2 bg-light shadow-sm p-3 h-100">
+                      <div class="d-flex align-items-center gap-2 mb-2">
+                        <span style="font-size: 2rem;">🥈</span>
+                        <div>
+                          <span class="badge bg-secondary text-white fw-bold">SILVER - 2ND PLACE</span>
+                          <h5 class="fw-bold mb-0 mt-1">${silverName}</h5>
+                          <small class="text-muted">${silverBranch}</small>
+                        </div>
+                      </div>
+                      <div class="border-top pt-2 mt-auto d-flex justify-content-between align-items-center">
+                        <small class="text-muted">Total Score:</small>
+                        <span class="fw-bold fs-5 text-secondary">${silverScore}</span>
+                      </div>
+                    </div>
+                  </div>
+                ` : ''}
+
+                ${bronze1 ? `
+                  <div class="col-md-${bronze2Name ? '4' : '6'}">
+                    <div class="card border-danger border-2 bg-light shadow-sm p-3 h-100">
+                      <div class="d-flex align-items-center gap-2 mb-2">
+                        <span style="font-size: 2rem;">🥉</span>
+                        <div>
+                          <span class="badge bg-danger text-white fw-bold">BRONZE - 3RD PLACE</span>
+                          <h5 class="fw-bold mb-0 mt-1">${bronze1Name}</h5>
+                          <small class="text-muted">${bronze1Branch}</small>
+                        </div>
+                      </div>
+                      <div class="border-top pt-2 mt-auto d-flex justify-content-between align-items-center">
+                        <small class="text-muted">Total Score:</small>
+                        <span class="fw-bold fs-5 text-danger">${bronze1Score}</span>
+                      </div>
+                    </div>
+                  </div>
+                ` : ''}
+
+                ${bronze2Name ? `
+                  <div class="col-md-4">
+                    <div class="card border-danger border-2 bg-light shadow-sm p-3 h-100">
+                      <div class="d-flex align-items-center gap-2 mb-2">
+                        <span style="font-size: 2rem;">🥉</span>
+                        <div>
+                          <span class="badge bg-danger text-white fw-bold">BRONZE - DUAL 3RD</span>
+                          <h5 class="fw-bold mb-0 mt-1">${bronze2Name}</h5>
+                          <small class="text-muted">${bronze2Branch}</small>
+                        </div>
+                      </div>
+                      <div class="border-top pt-2 mt-auto d-flex justify-content-between align-items-center">
+                        <small class="text-muted">Total Score:</small>
+                        <span class="fw-bold fs-5 text-danger">${bronze2Score}</span>
+                      </div>
+                    </div>
+                  </div>
+                ` : ''}
+              </div>
+
+              <!-- 📋 Full Tournament Kata Results & Standings Table -->
+              <div class="mt-4 text-start">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <h6 class="fw-bold text-dark m-0 d-flex align-items-center gap-1">
+                    <span>📋</span> Complete Standings & Referee Scores
+                  </h6>
+                  <span class="badge bg-secondary">${(bracket.competitors || []).length} Competitors</span>
+                </div>
+                <div class="table-responsive rounded border shadow-sm">
+                  <table class="table table-sm table-hover align-middle text-center mb-0" style="font-size: 0.85rem;">
+                    <thead class="table-dark">
+                      <tr>
+                        <th style="width: 65px;">Rank</th>
+                        <th class="text-start">Competitor Name</th>
+                        <th class="text-start">Dojo / Branch</th>
+                        <th style="width: 50px;">R1</th>
+                        <th style="width: 50px;">R2</th>
+                        <th style="width: 50px;">R3</th>
+                        <th style="width: 50px;">R4</th>
+                        <th style="width: 50px;">R5</th>
+                        <th style="width: 75px;">Final Score</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${([...(bracket.competitors || [])]
+                        .filter(c => c && c.name)
+                        .sort((a, b) => {
+                          if (a.place && b.place) return a.place - b.place;
+                          if (a.place) return -1;
+                          if (b.place) return 1;
+                          return (b.totalScore || 0) - (a.totalScore || 0);
+                        })
+                      ).map((comp, idx) => {
+                        const rankBadge = comp.place === 1 ? '<span class="badge bg-warning text-dark fw-bold">🥇 1st</span>' :
+                          comp.place === 2 ? '<span class="badge bg-secondary text-white fw-bold">🥈 2nd</span>' :
+                          (comp.place === 3 || comp.place === 4) ? '<span class="badge bg-danger text-white fw-bold">🥉 3rd</span>' :
+                          (comp.place ? `<span class="fw-bold text-muted">${comp.place}th</span>` : `<span class="text-muted">${idx + 1}</span>`);
+
+                        const isGold = comp.place === 1;
+                        const isMedalist = comp.place && comp.place <= 4;
+                        const rowClass = isGold ? 'table-warning fw-bold' : (isMedalist ? 'table-light fw-semibold' : '');
+
+                        return `
+                          <tr class="${rowClass}">
+                            <td>${rankBadge}</td>
+                            <td class="text-start fw-bold">${this.cleanParticipantName(comp.name)}</td>
+                            <td class="text-start text-muted">${comp.branch || 'Main Dojo'}</td>
+                            ${[0, 1, 2, 3, 4].map(r => `<td>${(comp.scores && comp.scores[r] !== undefined && comp.refereeTouched && comp.refereeTouched[r]) ? Number(comp.scores[r]).toFixed(1) : '-'}</td>`).join('')}
+                            <td class="fw-bold fs-6 text-primary">${(comp.totalScore || 0).toFixed(2)}</td>
+                          </tr>
+                        `;
+                      }).join('')}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="alert alert-success border-success mt-4 mb-0 py-2 small d-flex align-items-center justify-content-center gap-2">
+                <span>✅</span>
+                <span><strong>Bout Officially Completed!</strong> Results are recorded and synchronized to all Tatami rings and the cloud database.</span>
+              </div>
+            </div>
+            <div class="modal-footer bg-light justify-content-between">
+              <div class="d-flex gap-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm fw-bold" onclick="BoutEditor.printBoutSheet()">🖨️ Print Sheet</button>
+                <button type="button" class="btn btn-outline-danger btn-sm fw-bold" onclick="BoutEditor.downloadBoutPDF('${bracket.boutId}')">📄 Download PDF</button>
+              </div>
+              <button type="button" class="btn btn-success fw-bold px-4" data-bs-dismiss="modal">Close</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('modalContainer').innerHTML = modalHtml;
+    const modal = new bootstrap.Modal(document.getElementById('kataWinnerModal'));
+    modal.show();
   },
 
   async submitEditedChanges(boutId) {
@@ -384,7 +701,7 @@ const BoutEditor = {
     if (!bracket) return alert('Bout sheet not found!');
 
     if (bracket.eventType === 'Kata') {
-      this.finishKataRound(boutId);
+      return this.calculateAndDeclareKataWinners(boutId);
     }
 
     const btn = document.getElementById(`submitBtn_${boutId}`);
@@ -754,6 +1071,40 @@ const BoutEditor = {
     const bronze1Name = medals.bronze1 ? medals.bronze1.name : '_______';
     const bronze2Name = medals.bronze2 ? medals.bronze2.name : '_______';
 
+    let declaredWinnerBannerHTML = '';
+    const isDeclared = Boolean(bracket.isWinnersDeclared || (medals.gold && medals.gold.name));
+    if (isDeclared) {
+      declaredWinnerBannerHTML = `
+        <div class="card border-warning border-2 bg-warning bg-opacity-10 mb-3 p-3 shadow-sm print-hide rounded">
+          <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>
+              <div class="d-flex align-items-center gap-2 mb-1">
+                <span class="badge bg-success fs-7">✅ OFFICIAL WINNERS DECLARED</span>
+                <span class="badge bg-dark text-warning fs-7">Completed</span>
+              </div>
+              <h5 class="fw-bold mb-0 text-dark">🏆 Kata Winners Announced & Bout Completed!</h5>
+              <div class="small text-dark mt-1">
+                🥇 <strong>Gold:</strong> ${this.cleanParticipantName(goldName)} &nbsp;|&nbsp; 
+                🥈 <strong>Silver:</strong> ${this.cleanParticipantName(silverName)} &nbsp;|&nbsp; 
+                🥉 <strong>Bronze:</strong> ${this.cleanParticipantName(bronze1Name)}
+                ${medals.bronze2 ? ` &nbsp;|&nbsp; 🥉 ${this.cleanParticipantName(bronze2Name)}` : ''}
+              </div>
+            </div>
+            <div class="d-flex gap-2 align-items-center">
+              <button type="button" class="btn btn-warning text-dark fw-bold btn-sm shadow-sm d-flex align-items-center gap-1" onclick="BoutEditor.showKataWinnerModal('${bracket.boutId}')">
+                🏆 View Winner Podium
+              </button>
+              ${canScoreKata ? `
+                <button type="button" class="btn btn-outline-dark btn-sm fw-semibold" onclick="BoutEditor.calculateAndDeclareKataWinners('${bracket.boutId}')" title="Recalculate and re-sync scores">
+                  🔄 Recalculate Standings
+                </button>
+              ` : ''}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
     const activeTie = tieBreaker.activeTie || (
       (tieBreaker.rescoreRound && !tieBreaker.flagVote) ? '3WAY_RESCORE' :
       (tieBreaker.flagVote ? '2WAY_FLAG' : null)
@@ -883,6 +1234,7 @@ const BoutEditor = {
 
         ${flagVoteCardHTML}
         ${rescoreRoundHTML}
+        ${declaredWinnerBannerHTML}
 
         <!-- Main Kata Table -->
         <div class="table-responsive my-2">
@@ -961,6 +1313,31 @@ const BoutEditor = {
           </table>
         </div>
 
+        <!-- KATA ACTION CONTROLS (Calculate & Declare Winners) -->
+        ${canScoreKata ? `
+          <div class="card border-0 bg-light p-3 my-3 shadow-sm print-hide rounded">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+              <div>
+                <h6 class="fw-bold text-dark m-0 d-flex align-items-center gap-2">
+                  <span>⚡</span> Kata Scoring & Winner Calculation
+                </h6>
+                <small class="text-muted">Enter referee scores (0-10) above. Click below to recalculate standings or officially declare podium winners.</small>
+              </div>
+              <div class="d-flex flex-wrap gap-2 align-items-center">
+                <button type="button" class="btn btn-outline-primary btn-sm fw-bold px-3 shadow-sm" 
+                  onclick="BoutEditor.calculateKataScoresOnly('${bracket.boutId}')">
+                  ⚡ Recalculate Scores
+                </button>
+                <button type="button" class="btn btn-warning text-dark fw-bold px-4 py-2 shadow d-flex align-items-center gap-2" 
+                  onclick="BoutEditor.calculateAndDeclareKataWinners('${bracket.boutId}')">
+                  <span class="fs-5">🏆</span>
+                  <span>Calculate & Declare Winners</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        ` : ''}
+
         <!-- MEDALS & REFEREES FOOTER -->
         <div class="border-top mt-3 pt-2 kata-medals-footer-${bracket.boutId}">
           <div class="row text-center fw-bold fs-6 mb-2">
@@ -981,6 +1358,23 @@ const BoutEditor = {
     `;
   },
 
+  _kataSaveTimeout: null,
+  debouncedKataSave(boutId) {
+    if (this._kataSaveTimeout) {
+      clearTimeout(this._kataSaveTimeout);
+    }
+    this._kataSaveTimeout = setTimeout(() => {
+      const bracket = SyncService.state.brackets[boutId];
+      const bout = (SyncService.state.bouts || []).find(b => b.id === boutId);
+      const safeTime = Math.max(Date.now(), (bracket?.lastUpdated || 0) + 1000, (SyncService.state.lastUpdated || 0) + 1000);
+      if (bracket) bracket.lastUpdated = safeTime;
+      if (bout) bout.lastUpdated = safeTime;
+
+      SyncService.checkBoutCompletion(boutId);
+      SyncService.saveToLocal();
+    }, 350);
+  },
+
   onKataScoreFocus(boutId, compId, refIndex) {
     SyncService.startBoutScoring(boutId);
     const bracket = SyncService.state.brackets[boutId];
@@ -999,10 +1393,11 @@ const BoutEditor = {
       if (!Array.isArray(comp.scores) || comp.scores.length !== 5) {
         comp.scores = [5.0, 5.0, 5.0, 5.0, 5.0];
       }
-      BracketEngine.recalculateKataRanks(bracket);
-      SyncService.checkBoutCompletion(boutId);
-      SyncService.saveToLocalOnly();
-      this.updateKataDOM(boutId);
+      const sum = comp.scores.reduce((acc, v, idx) => acc + (comp.refereeTouched[idx] ? (parseFloat(v) || 0) : 0), 0);
+      comp.totalScore = Math.round(sum * 100) / 100;
+      const totalEls = document.querySelectorAll(`.kata-total-${comp.id}`);
+      totalEls.forEach(el => el.textContent = comp.totalScore.toFixed(2));
+      this.debouncedKataSave(boutId);
     }
   },
 
@@ -1027,27 +1422,16 @@ const BoutEditor = {
     const scoreNum = val === '' ? 5.0 : (parseFloat(val) || 0);
     comp.scores[refIndex] = scoreNum;
 
-    const prevActiveTie = bracket.tieBreaker ? bracket.tieBreaker.activeTie : null;
-    BracketEngine.recalculateKataRanks(bracket);
-    SyncService.checkBoutCompletion(boutId);
+    // Calculate this competitor's row total directly
+    const sum = comp.scores.reduce((acc, v, idx) => acc + (comp.refereeTouched[idx] ? (parseFloat(v) || 0) : 0), 0);
+    comp.totalScore = Math.round(sum * 100) / 100;
 
-    const safeTime = Math.max(Date.now(), (bracket.lastUpdated || 0) + 1000, (SyncService.state.lastUpdated || 0) + 1000);
-    bracket.lastUpdated = safeTime;
-    const bout = (SyncService.state.bouts || []).find(b => b.id === boutId);
-    if (bout) bout.lastUpdated = safeTime;
+    // Instant in-place DOM update of this competitor's total (<0.1ms, zero lag, no tie check)
+    const totalEls = document.querySelectorAll(`.kata-total-${comp.id}`);
+    totalEls.forEach(el => el.textContent = comp.totalScore.toFixed(2));
 
-    SyncService.saveToLocal();
-
-    const newActiveTie = bracket.tieBreaker ? bracket.tieBreaker.activeTie : null;
-    if (prevActiveTie !== newActiveTie) {
-      this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
-      const ringContainer = document.getElementById('ringBoutContainer');
-      if (ringContainer) {
-        this.renderBoutSheet(boutId, 'ringBoutContainer');
-      }
-    } else {
-      this.updateKataDOM(boutId);
-    }
+    // Debounced background save so up/down arrow keys are buttery smooth
+    this.debouncedKataSave(boutId);
   },
 
   updateKataDOM(boutId) {
@@ -1117,17 +1501,42 @@ const BoutEditor = {
     if (!bracket || bracket.eventType !== 'Kata' || !bracket.tieBreaker.flagVote) return;
 
     bracket.tieBreaker.flagVote.winnerId = winnerId;
-    SyncService.lastLocalEditTime = Date.now();
-    BracketEngine.recalculateKataRanks(bracket);
+    BracketEngine.recalculateKataRanks(bracket, { triggerTieBreaker: true });
+
+    const safeTime = Math.max(Date.now(), (bracket.lastUpdated || 0) + 1000, (SyncService.state.lastUpdated || 0) + 1000);
+    bracket.lastUpdated = safeTime;
+    const bout = (SyncService.state.bouts || []).find(b => b.id === boutId);
+    if (bout) bout.lastUpdated = safeTime;
+
+    if (!bracket.tieBreaker.activeTie && bracket.medals && bracket.medals.gold) {
+      bracket.isWinnersDeclared = true;
+      if (bout) bout.status = 'Completed';
+      // Release tatami active match if currently running on a ring
+      (SyncService.state.tatamis || []).forEach(tatami => {
+        if (tatami.activeBoutId === boutId) {
+          tatami.activeBoutId = null;
+          tatami.activeMatchNumber = null;
+          tatami.status = 'Empty';
+          tatami.lastUpdated = safeTime;
+        }
+      });
+    }
+
+    SyncService.lastLocalEditTime = safeTime;
     SyncService.checkBoutCompletion(boutId);
+    SyncService.stopBoutScoring();
     SyncService.saveToLocal();
     SyncService.pushToAivenDB();
-    SyncService.stopBoutScoring();
 
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
     const ringContainer = document.getElementById('ringBoutContainer');
     if (ringContainer) {
       this.renderBoutSheet(boutId, 'ringBoutContainer');
+    }
+
+    if (bracket.isWinnersDeclared) {
+      this.playCelebrationFanfare();
+      this.showKataWinnerModal(boutId);
     }
   },
 
@@ -1149,10 +1558,9 @@ const BoutEditor = {
       if (!Array.isArray(rc.scores) || rc.scores.length !== 5) {
         rc.scores = [5.0, 5.0, 5.0, 5.0, 5.0];
       }
-      BracketEngine.recalculateKataRanks(bracket);
-      SyncService.checkBoutCompletion(boutId);
-      SyncService.saveToLocalOnly();
+      BracketEngine.recalculateKataRanks(bracket, { triggerTieBreaker: false });
       this.updateKataDOM(boutId);
+      this.debouncedKataSave(boutId);
     }
   },
 
@@ -1177,59 +1585,40 @@ const BoutEditor = {
     const scoreNum = val === '' ? 5.0 : (parseFloat(val) || 0);
     rc.scores[refIndex] = scoreNum;
 
-    const prevActiveTie = bracket.tieBreaker ? bracket.tieBreaker.activeTie : null;
-    BracketEngine.recalculateKataRanks(bracket);
-    SyncService.checkBoutCompletion(boutId);
+    BracketEngine.recalculateKataRanks(bracket, { triggerTieBreaker: false });
+    this.updateKataDOM(boutId);
+    this.debouncedKataSave(boutId);
+  },
+
+  finishKataRescoreRound(boutId) {
+    if (this._kataSaveTimeout) clearTimeout(this._kataSaveTimeout);
+    const bracket = SyncService.state.brackets[boutId];
+    if (!bracket || bracket.eventType !== 'Kata' || !bracket.tieBreaker || !bracket.tieBreaker.rescoreRound) return;
+
+    this.readKataDOMInputs(bracket, boutId);
+
+    SyncService.lastLocalEditTime = Date.now();
+    BracketEngine.recalculateKataRanks(bracket, { triggerTieBreaker: true });
 
     const safeTime = Math.max(Date.now(), (bracket.lastUpdated || 0) + 1000, (SyncService.state.lastUpdated || 0) + 1000);
     bracket.lastUpdated = safeTime;
     const bout = (SyncService.state.bouts || []).find(b => b.id === boutId);
     if (bout) bout.lastUpdated = safeTime;
 
-    SyncService.saveToLocal();
-
-    const newActiveTie = bracket.tieBreaker ? bracket.tieBreaker.activeTie : null;
-    if (prevActiveTie !== newActiveTie) {
-      this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');
-      const ringContainer = document.getElementById('ringBoutContainer');
-      if (ringContainer) {
-        this.renderBoutSheet(boutId, 'ringBoutContainer');
-      }
-    } else {
-      this.updateKataDOM(boutId);
-    }
-  },
-
-  finishKataRescoreRound(boutId) {
-    const bracket = SyncService.state.brackets[boutId];
-    if (!bracket || bracket.eventType !== 'Kata' || !bracket.tieBreaker || !bracket.tieBreaker.rescoreRound) return;
-
-    if (Array.isArray(bracket.tieBreaker.rescoreRound.competitors)) {
-      bracket.tieBreaker.rescoreRound.competitors.forEach(rc => {
-        if (!Array.isArray(rc.scores) || rc.scores.length !== 5) {
-          rc.scores = [5.0, 5.0, 5.0, 5.0, 5.0];
+    if (!bracket.tieBreaker.activeTie && bracket.medals && bracket.medals.gold) {
+      bracket.isWinnersDeclared = true;
+      if (bout) bout.status = 'Completed';
+      // Release tatami active match if currently running on a ring
+      (SyncService.state.tatamis || []).forEach(tatami => {
+        if (tatami.activeBoutId === boutId) {
+          tatami.activeBoutId = null;
+          tatami.activeMatchNumber = null;
+          tatami.status = 'Empty';
+          tatami.lastUpdated = safeTime;
         }
-        if (!Array.isArray(rc.refereeTouched) || rc.refereeTouched.length !== 5) {
-          rc.refereeTouched = [false, false, false, false, false];
-        }
-
-        [0, 1, 2, 3, 4].forEach(refIdx => {
-          const inputEl = document.getElementById(`kataRescoreInput_${boutId}_${rc.id}_${refIdx}`);
-          if (inputEl) {
-            const val = inputEl.value;
-            if (val !== '' || inputEl.dataset.touched === 'true') {
-              const num = parseFloat(val);
-              rc.scores[refIdx] = isNaN(num) ? 5.0 : num;
-              rc.refereeTouched[refIdx] = true;
-            }
-          }
-        });
-        rc.hasScored = rc.refereeTouched.some(t => t);
       });
     }
 
-    SyncService.lastLocalEditTime = Date.now();
-    BracketEngine.recalculateKataRanks(bracket);
     SyncService.checkBoutCompletion(boutId);
     SyncService.saveToLocal();
     SyncService.pushToAivenDB();
@@ -1239,6 +1628,11 @@ const BoutEditor = {
     const ringContainer = document.getElementById('ringBoutContainer');
     if (ringContainer) {
       this.renderBoutSheet(boutId, 'ringBoutContainer');
+    }
+
+    if (bracket.isWinnersDeclared) {
+      this.playCelebrationFanfare();
+      this.showKataWinnerModal(boutId);
     }
   },
 
@@ -1260,7 +1654,7 @@ const BoutEditor = {
       bracket.tieBreaker.activeTie = null;
     }
 
-    BracketEngine.recalculateKataRanks(bracket);
+    BracketEngine.recalculateKataRanks(bracket, { triggerTieBreaker: false });
     SyncService.checkBoutCompletion(boutId);
     SyncService.saveToLocal();
     this.renderBoutSheet(boutId, 'activeBoutDiagramContainer');

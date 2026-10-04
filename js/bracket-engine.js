@@ -466,8 +466,10 @@ const BracketEngine = {
     return result;
   },
 
-  recalculateKataRanks(bracket) {
+  recalculateKataRanks(bracket, options = {}) {
     if (!bracket || bracket.eventType !== 'Kata') return;
+
+    const triggerTieBreaker = Boolean(options && options.triggerTieBreaker);
 
     bracket.competitors.forEach(comp => {
       if (!Array.isArray(comp.scores) || comp.scores.length !== 5) {
@@ -531,29 +533,28 @@ const BracketEngine = {
         currentRank += 1;
       } else if (bin.length === 2) {
         // 2-Way Tie
-        if (currentRank <= 2) {
-          const flagWinnerId = bracket.tieBreaker.flagVote ? bracket.tieBreaker.flagVote.winnerId : null;
+        const flagWinnerId = bracket.tieBreaker.flagVote ? bracket.tieBreaker.flagVote.winnerId : null;
 
-          if (flagWinnerId && bin.some(c => c.id === flagWinnerId)) {
-            const winner = bin.find(c => c.id === flagWinnerId);
-            const loser = bin.find(c => c.id !== flagWinnerId);
-            winner.place = currentRank;
-            loser.place = currentRank + 1;
-            currentRank += 2;
-          } else {
-            bin.forEach(c => c.place = currentRank);
-            bracket.tieBreaker.activeTie = '2WAY_FLAG';
-            bracket.tieBreaker.rescoreRound = null;
-            bracket.tieBreaker.flagVote = {
-              type: '2WAY_FLAG',
-              tiedIds: bin.map(c => c.id),
-              winnerId: null
-            };
-            currentRank += 2;
-            break; // Stop ranking until 2-way flag tie resolved
-          }
+        if (flagWinnerId && bin.some(c => c.id === flagWinnerId)) {
+          const winner = bin.find(c => c.id === flagWinnerId);
+          const loser = bin.find(c => c.id !== flagWinnerId);
+          winner.place = currentRank;
+          loser.place = currentRank + 1;
+          currentRank += 2;
+          bracket.tieBreaker.activeTie = null;
+        } else if (currentRank <= 2 && triggerTieBreaker) {
+          bin.forEach(c => c.place = currentRank);
+          bracket.tieBreaker.activeTie = '2WAY_FLAG';
+          bracket.tieBreaker.rescoreRound = null;
+          bracket.tieBreaker.flagVote = {
+            type: '2WAY_FLAG',
+            tiedIds: bin.map(c => c.id),
+            winnerId: null
+          };
+          currentRank += 2;
+          break; // Stop ranking until 2-way flag tie resolved
         } else {
-          // Bronze tie is allowed (dual 3rd place)
+          // Live scoring or bronze: competitors smoothly share the rank without UI interruption
           bin.forEach(c => c.place = currentRank);
           currentRank += 2;
         }
@@ -564,8 +565,11 @@ const BracketEngine = {
         const rescore = bracket.tieBreaker.rescoreRound;
         const currentTiedKey = bin.map(c => c.id).sort().join(',');
 
-        if (!rescore || (rescore.tiedIds.sort().join(',') !== currentTiedKey)) {
-          // Create new Re-Score Round for 3+ tied contestants
+        if (!triggerTieBreaker && (!rescore || (rescore.tiedIds && rescore.tiedIds.sort().join(',') !== currentTiedKey))) {
+          // Live scoring: contestants smoothly share the rank, do not trigger re-score round
+          currentRank += bin.length;
+        } else if (!rescore || (rescore.tiedIds.sort().join(',') !== currentTiedKey)) {
+          // Create new Re-Score Round for 3+ tied contestants when explicitly triggered
           bracket.tieBreaker.activeTie = '3WAY_RESCORE';
           bracket.tieBreaker.flagVote = null;
           bracket.tieBreaker.rescoreRound = {
